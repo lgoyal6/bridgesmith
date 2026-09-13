@@ -1,0 +1,36 @@
+{
+  "name": "bridgesmith",
+  "version": "0.1.0",
+  "description": "An agent that manufactures its own certified integrations: discovers an access path to any app, generates an MCP server + REST API connector, and only mounts what passes held-out certification.",
+  "type": "module",
+  "bin": {
+    "bridgesmith": "dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "commander": "^15.0.0",
+    "execa": "^10.0.1",
+    "express": "^5.2.1",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.5.1",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}

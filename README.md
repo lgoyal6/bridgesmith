@@ -4,10 +4,13 @@
 
 **An agent that builds its own integrations and refuses to use the ones it can't prove work.** Point it at an app with no connector; it reverse-engineers the API, generates an MCP server + REST connector, and only mounts what passes certification against held-out evidence.
 
+[![CI](https://github.com/lgoyal6/bridgesmith/actions/workflows/ci.yml/badge.svg)](https://github.com/lgoyal6/bridgesmith/actions/workflows/ci.yml)
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-5FA04E?logo=nodedotjs&logoColor=white)](package.json)
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
 [![Tests](https://img.shields.io/badge/tests-10%2F10-35d07f)](test)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+<a href="https://www.youtube.com/watch?v=HA4aw3cb8B4"><img src="https://img.youtube.com/vi/HA4aw3cb8B4/maxresdefault.jpg" alt="Watch the 2-minute Bridgesmith demo" width="640"></a>
 
 ### ▶ [Watch the 2-minute demo](https://www.youtube.com/watch?v=HA4aw3cb8B4)
 

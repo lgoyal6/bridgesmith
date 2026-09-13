@@ -17,9 +17,6 @@
     "node": ">=22"
   },
   "packageManager": "pnpm@12.4.1",
-  "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
-  },
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

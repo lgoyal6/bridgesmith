@@ -8,8 +8,8 @@ B=$'\033[1m'; D=$'\033[2m'; G=$'\033[38;5;215m'; C=$'\033[38;5;79m'; R=$'\033[0m
 step(){ printf "\n${G}▎ %s${R}\n\n" "$1"; sleep 1.1; }
 run(){ local disp="$1"; shift; [ "$1" = "--" ] && shift; printf "${D}\$ ${R}${B}%s${R}\n" "$disp"; sleep 0.8; "$@"; sleep 1.4; }
 
-[ -d dist ] || { printf "${D}building…${R}\n"; pnpm -s build; }
-rm -rf connectors/chesscom connectors/devpost
+[ -d dist ] || { printf "${D}building…${R}\n"; pnpm build; }
+rm -rf connectors/chesscom connectors/devpost connectors/imessage
 
 printf "${C}${B}bridgesmith${R} — an agent builds its own integrations, and certifies them before it trusts them.\n"
 sleep 1.6
@@ -43,11 +43,14 @@ run "curl -X POST localhost:8799/op/get_api_hackathons -d '{\"page\":\"12\"}'" -
   bash -c "curl -s -X POST localhost:8799/op/get_api_hackathons -H 'content-type: application/json' -d '{\"page\":\"12\"}' | python3 -c 'import sys,json;r=json.load(sys.stdin);d=r.get(\"data\",{}).get(\"hackathons\",[]);[print(\"  •\", h[\"title\"]) for h in d[:5]] if d else print(\"  \",r)'"
 kill $SRV 2>/dev/null || true
 
-step "6 · the registry — every mounted connector carries a signed certificate"
+step "6 · give an app with NO network API a connector — iMessage, from its local database"
+run "bridgesmith forge imessage --tier local-store" -- pnpm exec tsx scripts/imessage-demo.ts
+
+step "7 · the registry — three connectors, two access tiers, each with a signed certificate"
 run "bridgesmith list" -- node dist/cli/index.js list
 
-step "7 · runtime: when an app drifts, it re-certifies and hot-swaps — or refuses"
-run "bridgesmith heal-demo" -- pnpm -s tsx scripts/selfheal-proof.ts
+step "8 · runtime: when an app drifts, it re-certifies and hot-swaps — or refuses"
+run "bridgesmith heal-demo" -- pnpm exec tsx scripts/selfheal-proof.ts
 
 printf "\n${C}${B}Certification is the gate. It never serves what it can't prove.${R}\n"
 printf "${D}github.com/lgoyal6/bridgesmith${R}\n\n"

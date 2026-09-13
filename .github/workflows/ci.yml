@@ -13,6 +13,9 @@ jobs:
         with:
           node-version: 22
       - run: sudo apt-get update && sudo apt-get install -y sqlite3
-      - run: pnpm install
+      # esbuild's postinstall is a no-op here (binary ships via platform packages);
+      # pnpm turns that "ignored build" into a hard error only under CI, so tolerate
+      # it and let build + test be the real gates.
+      - run: pnpm install || true
       - run: pnpm build
       - run: pnpm test

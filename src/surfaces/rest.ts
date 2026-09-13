@@ -23,8 +23,8 @@ export function buildRestApp(
 
   // Scoped-key gate on every data route.
   app.use("/op", (req: Request, res: Response, next) => {
-    if (opts.apiKey && req.header("x-toolsmith-key") !== opts.apiKey) {
-      res.status(401).json({ error: "invalid or missing x-toolsmith-key" });
+    if (opts.apiKey && req.header("x-bridgesmith-key") !== opts.apiKey) {
+      res.status(401).json({ error: "invalid or missing x-bridgesmith-key" });
       return;
     }
     next();
@@ -47,7 +47,7 @@ export function buildRestApp(
   app.get("/certificate", (_req, res) => res.json(cert));
 
   app.post("/op/:opId", async (req: Request, res: Response) => {
-    const opId = req.params.opId ?? "";
+    const opId = String(req.params.opId ?? "");
     if (!certified.has(opId)) {
       res.status(404).json({ error: `operation "${opId}" is not certified on this connector` });
       return;

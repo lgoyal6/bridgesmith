@@ -15,7 +15,7 @@ export function buildMcpServer(
   adapterOpts: AdapterOptions = {},
 ): { server: McpServer; adapter: Adapter; toolCount: number } {
   const adapter = new Adapter(spec, adapterOpts);
-  const server = new McpServer({ name: `toolsmith-${spec.app}`, version: `${cert.version}.0.0` });
+  const server = new McpServer({ name: `bridgesmith-${spec.app}`, version: `${cert.version}.0.0` });
   const certified = new Set(cert.certifiedOps);
 
   let toolCount = 0;
@@ -32,7 +32,7 @@ export function buildMcpServer(
         if (!result.ok) {
           return {
             isError: true,
-            content: [{ type: "text" as const, text: `toolsmith refused/failed: ${result.outcome} - ${result.error ?? ""}` }],
+            content: [{ type: "text" as const, text: `bridgesmith refused/failed: ${result.outcome} - ${result.error ?? ""}` }],
           };
         }
         return { content: [{ type: "text" as const, text: JSON.stringify(result.data) }] };

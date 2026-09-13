@@ -9,6 +9,8 @@
 [![Tests](https://img.shields.io/badge/tests-10%2F10-35d07f)](test)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+### ▶ [Watch the 2-minute demo](https://www.youtube.com/watch?v=HA4aw3cb8B4)
+
 [What it is](#what-it-is) · [How it works](#how-it-works) · [Why it matters](#why-it-matters) · [Alignment](#how-it-aligns-with-the-hosts) · [Try it](#try-it) · [Reliability](#reliability-measured)
 
 </div>
@@ -149,6 +151,6 @@ Reverse-engineering a private API can violate an app's ToS; Bridgesmith is run o
 
 ## Demo
 
-Video (≤2 min): **[demo link — add before submitting]**
+Video (≤2 min): **https://www.youtube.com/watch?v=HA4aw3cb8B4**
 
 MIT licensed.

@@ -31,7 +31,11 @@ export function inferSchema(samples: unknown[], opts: InferOptions = {}): JsonSc
   const types = new Set(present.map(jsonType));
   const nullable = types.delete("null");
 
-  if (types.size === 0) return { type: "null" };
+  // Every observed value was null. That is weak evidence the field is *always*
+  // null (it is often an optional description that happens to be empty in the
+  // sample), so we emit no type constraint rather than locking to type:null,
+  // which would reject the first non-null value seen at runtime.
+  if (types.size === 0) return {};
   if (types.size > 1) {
     // Mixed types: keep the union, no deeper inference. Rare in practice.
     const t = [...types];

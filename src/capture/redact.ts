@@ -2,7 +2,7 @@
  * Secrets never reach fixtures. Redaction is applied at HAR ingest, before any
  * Exchange is written to disk or fed to derivation. Auth material needed at
  * runtime lives separately in connectors/<app>/secrets.json (gitignored),
- * captured once via `toolsmith auth` - never from fixtures.
+ * captured once via `bridgesmith auth` - never from fixtures.
  */
 import type { Exchange } from "../core/types.js";
 
@@ -19,7 +19,7 @@ const SECRET_HEADERS = new Set([
 
 const SECRET_QUERY_PARAMS = [/token/i, /key$/i, /^api_?key/i, /secret/i, /session/i, /auth/i];
 
-export const REDACTED = "TOOLSMITH-REDACTED";
+export const REDACTED = "BRIDGESMITH-REDACTED";
 
 export function redactExchange(ex: Exchange): Exchange {
   const requestHeaders: Record<string, string> = {};

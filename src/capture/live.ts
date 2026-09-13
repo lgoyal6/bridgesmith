@@ -15,7 +15,7 @@ export async function captureUrls(urls: string[], opts: { headers?: Record<strin
   for (const raw of urls) {
     const u = new URL(raw);
     const res = await fetch(raw, {
-      headers: { accept: "application/json", "user-agent": "toolsmith-capture/0.1", ...(opts.headers ?? {}) },
+      headers: { accept: "application/json", "user-agent": "bridgesmith-capture/0.1", ...(opts.headers ?? {}) },
     });
     const text = await res.text();
     let body: unknown;

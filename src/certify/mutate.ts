@@ -46,7 +46,7 @@ function walk(schema: JsonSchema, value: unknown, path: string, out: Mutant[], c
         }
       }
       if (propSchema.enum && typeof obj[k] === "string") {
-        out.push({ kind: "enum-violation", path: `${path}/${k}`, value: cloneWithSet(value, `${path}/${k}`, "TOOLSMITH_MUTANT_ENUM") });
+        out.push({ kind: "enum-violation", path: `${path}/${k}`, value: cloneWithSet(value, `${path}/${k}`, "BRIDGESMITH_MUTANT_ENUM") });
       }
       walk(propSchema, obj[k], `${path}/${k}`, out, cap);
     }
@@ -66,11 +66,11 @@ function allowsNull(s: JsonSchema): boolean {
 function flipValue(t: string): unknown {
   switch (t) {
     case "string": return 424242;
-    case "integer": return "TOOLSMITH_MUTANT";
-    case "number": return "TOOLSMITH_MUTANT";
-    case "boolean": return "TOOLSMITH_MUTANT";
-    case "object": return "TOOLSMITH_MUTANT";
-    case "array": return "TOOLSMITH_MUTANT";
+    case "integer": return "BRIDGESMITH_MUTANT";
+    case "number": return "BRIDGESMITH_MUTANT";
+    case "boolean": return "BRIDGESMITH_MUTANT";
+    case "object": return "BRIDGESMITH_MUTANT";
+    case "array": return "BRIDGESMITH_MUTANT";
     default: return 424242;
   }
 }

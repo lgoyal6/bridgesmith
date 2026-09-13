@@ -1,0 +1,203 @@
+{
+  "app": "devpost",
+  "baseUrl": "https://devpost.com",
+  "tier": "derived-api",
+  "auth": {
+    "kind": "none"
+  },
+  "operations": [
+    {
+      "id": "get_api_hackathons",
+      "method": "GET",
+      "pathTemplate": "/api/hackathons",
+      "pathParams": [],
+      "queryParams": [
+        {
+          "name": "page",
+          "required": true,
+          "example": "1"
+        }
+      ],
+      "responseSchema": {
+        "type": "object",
+        "properties": {
+          "hackathons": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "displayed_location": {
+                  "type": "object",
+                  "properties": {
+                    "icon": {
+                      "type": "string",
+                      "enum": [
+                        "globe",
+                        "map-marker-alt"
+                      ]
+                    },
+                    "location": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "icon",
+                    "location"
+                  ]
+                },
+                "open_state": {
+                  "type": "string",
+                  "enum": [
+                    "open",
+                    "upcoming"
+                  ]
+                },
+                "thumbnail_url": {
+                  "type": "string"
+                },
+                "analytics_identifier": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "time_left_to_submission": {
+                  "type": "string"
+                },
+                "submission_period_dates": {
+                  "type": "string"
+                },
+                "themes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ]
+                  }
+                },
+                "prize_amount": {
+                  "type": "string"
+                },
+                "prizes_counts": {
+                  "type": "object",
+                  "properties": {
+                    "cash": {
+                      "type": "integer"
+                    },
+                    "other": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "cash",
+                    "other"
+                  ]
+                },
+                "registrations_count": {
+                  "type": "integer"
+                },
+                "featured": {
+                  "type": "boolean"
+                },
+                "organization_name": {
+                  "type": "string"
+                },
+                "winners_announced": {
+                  "type": "boolean"
+                },
+                "submission_gallery_url": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "start_a_submission_url": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "invite_only": {
+                  "type": "boolean"
+                },
+                "eligibility_requirement_invite_only_description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "managed_by_devpost_badge": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "analytics_identifier",
+                "displayed_location",
+                "eligibility_requirement_invite_only_description",
+                "featured",
+                "id",
+                "invite_only",
+                "managed_by_devpost_badge",
+                "open_state",
+                "organization_name",
+                "prize_amount",
+                "prizes_counts",
+                "registrations_count",
+                "start_a_submission_url",
+                "submission_gallery_url",
+                "submission_period_dates",
+                "themes",
+                "thumbnail_url",
+                "time_left_to_submission",
+                "title",
+                "url",
+                "winners_announced"
+              ]
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "total_count": {
+                "type": "integer"
+              },
+              "per_page": {
+                "type": "integer"
+              },
+              "fuzzy": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "fuzzy",
+              "per_page",
+              "total_count"
+            ]
+          }
+        },
+        "required": [
+          "hackathons",
+          "meta"
+        ]
+      },
+      "samples": 6,
+      "mutating": false
+    }
+  ],
+  "derivedAt": "2026-09-13T21:43:56.787Z",
+  "derivedFrom": "forge",
+  "specHash": "7ea53a0a2b0d7042eaa3aabf7fbb9f5d258126d66e4c2656731c4f32cd1feea7"
+}

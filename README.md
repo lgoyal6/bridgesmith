@@ -1,46 +1,105 @@
+<div align="center">
+
 # Bridgesmith
 
-**An agent that manufactures its own certified integrations.** Give it a task
-involving an app it has no connector for, and it discovers an access path,
-generates a connector exposing **both an MCP server and a keyed REST API** from
-one adapter core, **certifies it against held-out evidence**, and only mounts
-what passes. When it cannot certify, it refuses and says which operations failed.
-When a mounted connector drifts, it re-certifies and hot-swaps, or demotes.
+**An agent that builds its own integrations and refuses to use the ones it can't prove work.** Point it at an app with no connector; it reverse-engineers the API, generates an MCP server + REST connector, and only mounts what passes certification against held-out evidence.
 
-> Built for the Multi-App AI Agent Hackathon. The challenge: "Build one useful,
-> multi-step AI agent. Connect it to at least three external apps. Show how you
-> know it works." Bridgesmith's answer to *show how you know it works* is the
-> architecture, not a slide: certification is the gate between generated and
-> mounted.
+[![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-5FA04E?logo=nodedotjs&logoColor=white)](package.json)
+[![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
+[![Tests](https://img.shields.io/badge/tests-10%2F10-35d07f)](test)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## Project overview
+[What it is](#what-it-is) · [How it works](#how-it-works) · [Why it matters](#why-it-matters) · [Alignment](#how-it-aligns-with-the-hosts) · [Try it](#try-it) · [Reliability](#reliability-measured)
 
-Bridgesmith is a runtime that lets an agent extend itself: when it needs an app it
-has no connector for, it captures that app's traffic, derives a spec, generates a
-connector, and **certifies it against independent held-out evidence** before
-mounting. Certified connectors are exposed simultaneously as an **MCP server**
-(for any MCP client) and a **keyed REST API**. Refusal is first-class: what
-cannot be certified is not mounted, and drift at runtime triggers re-certify +
-hot-swap or demotion.
+</div>
 
-## External apps (minimum 3)
+> Most connector tools ask, "how do I call this API?" Bridgesmith asks, "how do I *know* this connector works, and how do I know the moment it stops?"
 
-The demo agent spans four external apps, two via connectors Bridgesmith builds and
-certifies itself, two established:
+![Bridgesmith building and certifying a connector live: it captures an app's API, derives a spec, runs the certification gate, and mints a signed birth certificate](docs/assets/demo.gif)
 
-1. **Devpost** — connector *manufactured and certified live* from its public API
-   (`connectors/devpost/`, forged via the CLI; no prior connector used).
-2. **Chess.com** — second connector manufactured and certified live (Tier-1
-   public API; see the eval table).
-3. **Notion** — established app; the agent writes certified-connector results
-   into it (via the connected Notion MCP).
-4. **Slack** — established app; the agent posts a run notification (self-DM).
+<sub>Silent capture from real runs: the terminal forges a Chess.com connector, certifies it against an independent holdout (40/40 mutation tests caught), and mints a signed certificate. Every log line and number is from an actual run; the fixtures are public, no-auth data.</sub>
 
-## Setup instructions
+## What it is
+
+Bridgesmith is a **connector foundry** — a runtime that lets an AI agent extend itself. When an agent needs an app it has no integration for, Bridgesmith captures that app's own traffic, derives a spec, generates a connector exposing **both an MCP server and a keyed REST API** from one adapter core, and **certifies it against independent held-out evidence** before it can be used. Certified connectors get a signed birth certificate and enter a registry; drift at runtime triggers automatic re-certification and hot-swap, or demotion.
+
+**The problem it solves.** Agents stall the moment they hit an app with no connector, and the connectors that exist for the long tail are unmaintained scrapers nobody trusts. The expensive part was never *writing* the integration — it's **knowing it works, and knowing the instant it breaks.** Bridgesmith makes the integration disposable and the *certificate* the durable artifact: an agent can manufacture a tool mid-task and have machine-checkable proof it is safe to call.
+
+**Why it's important.** Every autonomous agent is one unverified tool call away from a silent failure — a connector that returns a schema-valid empty list, a field that quietly changed type, an endpoint that moved. Bridgesmith turns those silent failures into loud, typed, attributed ones, and never serves data it cannot certify.
+
+## How it works
+
+The core idea: **certification is the gate between *generated* and *mounted*.** A connector is derived from one capture and graded against a *different, independent* capture — never its own homework — plus a mutation suite that proves the gate rejects wrong data, not just confirms what it already saw.
+
+```
+ capture A ─┐                                   ┌── MCP server ──┐
+            ├─ derive spec (from A only) ───────┤    adapter     ├── certified ops only
+ capture B ─┘         │                         └── REST API ────┘
+ (holdout)            ▼
+              ┌───────────────────────────────────────────────┐
+              │  CERTIFY                                        │
+              │   1. holdout replay   (validate B vs the spec)  │
+              │   2. mutation suite   (corrupt B → must reject) │
+              │   3. live canary      (read-only, optional)     │
+              │   repair loop (bounded): re-infer over A∪B      │
+              └───────────────────────────────────────────────┘
+                     │ all green?
+             ┌───────┴────────┐
+        yes  ▼                ▼  no
+   sign birth cert       REFUSE — name the
+   → registry → mount    failing / uncovered ops
+
+ runtime:  every response schema-validated → drift trips the breaker →
+           re-capture → re-certify → hot-swap   ·OR·   DEMOTE and refuse
+```
+
+**Access ladder (pluggable drivers, uniform certification).** Every rung produces the same `Exchange[]`, so everything downstream is identical:
+
+1. **official-api** — a documented public API.
+2. **derived-api** — reverse-engineer the app's own XHR/JSON traffic into a spec (`mitmproxy`-style capture → inference).
+3. **browser-bridge** — UI automation for apps with no reachable XHR *(documented; not in v0)*.
+4. **local-store** — desktop apps whose data lives in a local SQLite file (iMessage, Notes, Safari), read-only via the `sqlite3` CLI.
+
+**The technical spine** (file-level, so every claim is checkable):
+
+| Stage | What it does | Where |
+| --- | --- | --- |
+| Capture | HAR + live fetch; **secrets redacted at ingest** so fixtures never hold credentials | `src/capture/` |
+| Derive | trie path-templating (varying id vs distinct resource by cardinality); schema inference with an **evidence floor** (a field is `required` only with enough samples) | `src/spec/` |
+| Certify | independent-holdout replay + mutation suite + bounded repair loop | `src/certify/` |
+| Sign | ed25519 birth certificate over canonical JSON; on-disk registry | `src/registry/` |
+| Serve | one spec-driven adapter → MCP + REST surfaces, exposing certified ops only | `src/codegen/`, `src/surfaces/` |
+| Guard | runtime schema gate (shared validator), circuit breaker, **false-green rate**, self-heal | `src/runtime/` |
+
+The LLM plans (which tier, when to re-capture, when to refuse); everything that produces a guarantee is deterministic code, so there is no generated-code failure surface to trust.
+
+## Why it matters
+
+A working connector is a snapshot; a *certified* one is a claim you can re-check. Bridgesmith is built so three things are structurally impossible: mounting an uncertified tool, mounting an operation with no held-out evidence, and returning schema-invalid data. It does **not** claim "never fails" — it claims **no failure is silent**. Every outcome is a typed, counted event (`ok | schema-violation | http-error | network-error | refused | anomaly`), and drift is met with re-certification or refusal, never a quiet wrong answer.
+
+## How it aligns with the hosts
+
+Bridgesmith uses **no sponsor SDK** — the hackathon named none, and its own thesis is the point. But it is aimed squarely at what the host and judges are building:
+
+- **Lemma (host) — silent failures in production agents.** Bridgesmith's whole design is to convert silent tool failures into loud, attributed, traced ones, and its false-green rate measures exactly the "certified-but-actually-wrong" gap Lemma detects. It's the same worldview implemented at mount time and runtime. **It could feed Lemma** a certificate + drift signal per connector, so their traces start with a ground-truth spec to diff against.
+- **Arga Labs (judge) — sandboxes that rehearse agents before they go live.** "Certify against held-out evidence before mounting" is rehearse-before-prod as a runtime primitive; the mutation suite is an adversarial test harness. **It could complement Arga** as the live-side counterpart to their pre-live twins: re-certify against reality when the app drifts.
+- **Userlens (judge) — the integration long tail.** Manufacturing certified connectors for apps with no API *is* the long-tail problem Userlens fields weekly. **It could help Userlens** turn "can you integrate with X?" into a forge-and-certify step instead of a maintenance liability.
+
+## External apps
+
+The demo agent spans four external apps — two via connectors Bridgesmith builds and certifies itself, two established:
+
+1. **Devpost** — connector manufactured + certified live from its public API (no prior connector used).
+2. **Chess.com** — second connector manufactured + certified live (public API).
+3. **Notion** — established; the agent writes certified-connector results into it.
+4. **Slack** — established; the agent posts a run summary.
+
+Plus **iMessage** as the local-store tier — an app with no network API at all, given one read-only.
+
+## Try it
 
 ```bash
-pnpm install
-pnpm build
+pnpm install && pnpm build
 pnpm test                              # 10 tests, all green
 
 # Forge + certify a connector from a public API (two independent capture slices):
@@ -51,108 +110,45 @@ node dist/cli/index.js forge devpost \
 
 node dist/cli/index.js list                                   # registry + certificate validity
 node dist/cli/index.js call devpost get_api_hackathons --param page=12
-node dist/cli/index.js serve devpost                          # REST facade on :8787
-```
-
-## Reliability testing
-
-See [`docs/RELIABILITY-BRIEF.md`](docs/RELIABILITY-BRIEF.md) for the full brief.
-Reproduce the numbers: `pnpm tsx scripts/eval.ts` (live public APIs, no
-secrets) and `pnpm tsx scripts/selfheal-proof.ts` (drift → hot-swap → demote).
-
-## Demo
-
-Video (≤2 min): **[demo link — add before submitting]**
-
-## What works / what does not
-
-Written first, on purpose. Certification is only as honest as this section.
-
-| Area | Status |
-| --- | --- |
-| Derive an OpenAPI-ish spec from captured JSON traffic | **Works.** `src/spec/derive.ts`, trie path-templating `src/spec/paths.ts`, schema inference `src/spec/infer.ts`. |
-| Certify against an **independent** holdout capture (not the derive capture) | **Works.** `src/certify/certify.ts`; the derive capture is only reused for repair re-inference. |
-| Mutation testing (prove the gate catches wrong data, not just confirms it) | **Works.** `src/certify/mutate.ts`, 40/40 mutants caught on both live targets. |
-| Bounded generate-verify-repair loop | **Works.** capped, re-infers over A+B on holdout failure; refuses at the cap. |
-| Signed, verifiable birth certificates + registry | **Works.** ed25519, `src/registry/certificate.ts`, `src/registry/registry.ts`. |
-| MCP surface + keyed REST surface off one adapter | **Works.** `src/surfaces/mcp.ts`, `src/surfaces/rest.ts`. |
-| Runtime schema gate (never return schema-invalid data) | **Works.** `src/codegen/adapter.ts`, one validator shared with certification `src/runtime/validate.ts`. |
-| Self-heal: drift → re-certify → hot-swap, or demote | **Works.** `src/runtime/selfheal.ts`, `src/runtime/breaker.ts`. |
-| Local-store tier (apps with no network API, e.g. iMessage) | **Works** on synthetic + real SQLite via the `sqlite3` CLI; `src/drivers/localstore.ts`, `src/drivers/imessage.ts`. |
-| Browser-bridge tier (UI automation for apps with no reachable XHR) | **Not built.** Documented as the T3 rung; out of scope for v0. |
-| Message-body typedstream decode for iMessage | **Not built.** We read `text` + metadata; full `attributedBody` decode is a not-now. |
-| Semantic correctness (right *type*, wrong *value*) | **Not covered by design.** The gate proves shape, not meaning. See the brief. |
-| Write/mutating operations | **Read-first.** Writes are never live-canaried; treat as unverified until a reversible-write canary lands. |
-
-## How it works
-
-```
-capture A ─┐                              ┌─ MCP server ─┐
-           ├─ derive spec (from A only) ──┤   adapter    ├─ certified ops only
-capture B ─┘        │                     └─ REST API ───┘
- (holdout)          ▼
-            CERTIFY: holdout replay + mutation suite + (optional) live canary
-                    │  repair loop (bounded) ─ re-infer over A+B, re-check on B
-                    ▼
-            all green? ── yes → sign birth certificate → registry → mount
-                       └─ no  → REFUSE (name the failing/uncovered ops)
-
-runtime: every response schema-validated → drift trips breaker →
-         re-capture → re-certify → hot-swap, or DEMOTE and refuse
-```
-
-The **access ladder** (pluggable drivers, uniform certification): official API →
-derived API (reverse-engineer the app's own XHR) → browser bridge → local store.
-Every rung produces `Exchange[]`; everything downstream is identical.
-
-## Try it
-
-```bash
-pnpm install && pnpm build
-
-# Forge a connector from a public API (two independent capture slices):
-node dist/cli/index.js forge devpost \
-  --derive  "https://devpost.com/api/hackathons?page=1,...,page=6" \
-  --holdout "https://devpost.com/api/hackathons?page=7,...,page=10" \
-  --host devpost.com --min-required 4
-
-node dist/cli/index.js list            # registry + certificate validity
-node dist/cli/index.js call devpost get_api_hackathons --param page=12
-node dist/cli/index.js serve devpost   # REST facade: GET /manifest, POST /op/:opId
+node dist/cli/index.js serve devpost                          # REST facade: GET /manifest, POST /op/:opId
 ```
 
 Reproduce the evidence:
 
 ```bash
-pnpm test                              # 10 tests: derivation, holdout cert, refusal, self-heal, signing
-pnpm tsx scripts/eval.ts           # the reliability table below, from live traffic
-pnpm tsx scripts/selfheal-proof.ts # drift → hot-swap → demote timeline
+pnpm tsx scripts/eval.ts            # the reliability table below, from live public APIs
+pnpm tsx scripts/selfheal-proof.ts  # drift → hot-swap → demote timeline
 ```
 
 ## Reliability, measured
 
-From `scripts/eval.ts` against live public APIs (no auth, no secrets):
+From `scripts/eval.ts` against live public APIs (no auth, no secrets). Derive and holdout are **independent** captures; the probe uses inputs never seen during either.
 
-| Connector | Tier | Certified | Holdout | Mutants caught | Unseen-input probe | Silent failures |
-| --- | --- | --- | --- | --- | --- | --- |
-| chess.com | derived-api | 1/1 | 8 | 40/40 | 3/4 | **0** (the 1 miss was caught as a schema violation) |
-| devpost | derived-api | 1/1 | 4 | 40/40 | 5/5 | **0** |
+| Connector | Certified | Holdout | Mutants caught | Unseen-input probe | Silent failures |
+| --- | --- | --- | --- | --- | --- |
+| chess.com | 1/1 | 8 | 40/40 | 3/4 | **0** |
+| devpost | 1/1 | 4 | 40/40 | 5/5 | **0** |
 
-The chess.com miss is the point: at 8 holdout samples a field can still be
-over-constrained, and the runtime gate caught it **loudly** instead of returning
-wrong data. Certification confidence scales with evidence; the false-green rate
-is how we measure it (`src/runtime/breaker.ts`). Full discussion in
-[`docs/RELIABILITY-BRIEF.md`](docs/RELIABILITY-BRIEF.md).
+The chess.com miss is the point: at 8 holdout samples one field was over-constrained and an unseen player tripped it — and the runtime gate caught it **loudly** as a schema violation, never returning wrong data. Certification confidence scales with evidence; the false-green rate is how we measure it. Full discussion in [`docs/RELIABILITY-BRIEF.md`](docs/RELIABILITY-BRIEF.md).
 
-## Honest scope & boundaries
+## What works / what does not
 
-- Reverse-engineering a private API can violate an app's ToS. Bridgesmith is run
-  only against **public, no-auth data** or **your own session reading your own
-  data**. It never reuses an app-wide embedded secret and never bypasses a
-  protection.
-- Captured traffic is **redacted at ingest** (`src/capture/redact.ts`): auth
-  headers, cookies, and token-like query params never reach fixtures.
-- The REST facade is scoped to team use with a token, not a public proxy of a
-  logged-in session.
-- "Certified" means *consistent with independent held-out evidence and robust to
-  schema mutation*, not *provably correct*. It proves shape, not meaning.
+| Area | Status |
+| --- | --- |
+| Derived-api + local-store tiers, end to end | **Works.** verified on live Chess.com/Devpost + SQLite. |
+| Independent-holdout certification + mutation suite | **Works.** 40/40 mutants caught on both live targets. |
+| Signed certificates, registry, MCP + REST surfaces | **Works.** |
+| Self-heal (drift → re-certify → hot-swap, or demote) | **Works.** `scripts/selfheal-proof.ts`. |
+| Browser-bridge tier (pure-UI apps) | **Not built.** documented T3 rung. |
+| Semantic correctness (right type, wrong value) | **Not covered by design.** the gate proves shape, not meaning. |
+| Write/mutating operations | **Read-first.** writes are never live-canaried yet. |
+
+## Honest scope
+
+Reverse-engineering a private API can violate an app's ToS; Bridgesmith is run only against **public, no-auth data** or **your own session reading your own data**, never a scraped app-wide secret or a bypassed protection. Captured traffic is redacted at ingest. "Certified" means *consistent with independent held-out evidence and robust to schema mutation* — not *provably correct*.
+
+## Demo
+
+Video (≤2 min): **[demo link — add before submitting]**
+
+MIT licensed.

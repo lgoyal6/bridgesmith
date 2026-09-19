@@ -32,6 +32,8 @@ import { validateAgainst } from "../runtime/validate.js";
 import { templatePaths } from "../spec/paths.js";
 import { specHashOf } from "../spec/derive.js";
 import { buildCaptureManifest, isSameEvidence } from "../capture/manifest.js";
+import { replayFetcher } from "./replay.js";
+import { runWorkflow } from "./workflow.js";
 
 export interface CertifyOptions {
   /** Max repair iterations per op. */
@@ -44,6 +46,8 @@ export interface CertifyOptions {
   minSamplesForRequired?: number;
   /** Overrides the driver recorded on the holdout exchanges when building its manifest. */
   holdoutDriver?: string;
+  /** Retry budget offered to workflow steps. Never applied to non-idempotent steps. */
+  workflowRetries?: number;
   log?: (line: string) => void;
 }
 
@@ -162,8 +166,39 @@ export async function certify(
     log(`CERTIFY ${op.id} (${samples.length} holdout samples, ${caught}/${mutants.length} mutants caught)`);
   }
 
+  // --- workflow certification, replayed against the holdout (no network) ---
+  // Runs after the per-op loop because a workflow may only use certified ops,
+  // and against a spec carrying only those ops for the same reason.
+  const certifiedSet = new Set(certifiedOps);
+  const workflowResults: CertificationReport["workflows"] = [];
+  const certifiedWorkflows: string[] = [];
+  const replaySpec: ConnectorSpec = { ...spec, operations: effectiveOps };
+  for (const wf of spec.workflows ?? []) {
+    const { fetcher } = replayFetcher(holdoutApi);
+    const r = await runWorkflow(replaySpec, wf, certifiedSet, {
+      fetcher,
+      ...(opts.workflowRetries !== undefined ? { retries: opts.workflowRetries } : {}),
+    });
+    workflowResults.push({
+      id: wf.id,
+      pass: r.pass,
+      ...(r.failure ? { failure: r.failure } : {}),
+      ...(r.detail ? { detail: r.detail } : {}),
+    });
+    if (r.pass) {
+      certifiedWorkflows.push(wf.id);
+      log(`CERTIFY workflow ${wf.id} (${r.steps.length} steps)`);
+    } else {
+      log(`REFUSE workflow ${wf.id}: ${r.failure}: ${r.detail}`);
+    }
+  }
+
   const verdict: CertificationReport["verdict"] =
-    certifiedOps.length === 0 ? "refused" : refusedOps.length + uncoveredOps.length > 0 ? "partial" : "certified";
+    certifiedOps.length === 0
+      ? "refused"
+      : refusedOps.length + uncoveredOps.length + workflowResults.filter((w) => !w.pass).length > 0
+        ? "partial"
+        : "certified";
 
   const report: CertificationReport = {
     app: spec.app,
@@ -177,12 +212,20 @@ export async function certify(
     uncoveredOps,
     verdict,
     holdout: holdoutManifest,
+    workflows: workflowResults,
   };
 
   // The mounted spec carries only certified ops and any repaired schemas, so its
   // hash differs from the derived spec's: recompute it, because the certificate
   // binds to what is MOUNTED and the registry re-derives this hash on every read.
-  const effectiveSpec: ConnectorSpec = { ...spec, operations: effectiveOps };
+  // Only certified workflows are carried into the mounted spec, for the same
+  // reason only certified ops are: a refused workflow must leave nothing to call.
+  const mountedWorkflows = (spec.workflows ?? []).filter((w) => certifiedWorkflows.includes(w.id));
+  const effectiveSpec: ConnectorSpec = {
+    ...spec,
+    operations: effectiveOps,
+    ...(spec.workflows ? { workflows: mountedWorkflows } : {}),
+  };
   effectiveSpec.specHash = specHashOf(effectiveSpec);
 
   return {

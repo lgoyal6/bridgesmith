@@ -69,6 +69,7 @@ export function issueCertificate(
     certifiedOps: report.certifiedOps,
     refusedOps: report.refusedOps,
     mutationStats: report.mutation,
+    certifiedWorkflows: report.workflows.filter((w) => w.pass).map((w) => w.id),
     captureManifestHash: manifestHash(spec.capture),
     holdoutManifestHash: manifestHash(report.holdout),
     issuedAt: new Date().toISOString(),

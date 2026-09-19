@@ -89,6 +89,48 @@ export interface OperationSpec {
   description?: string;
 }
 
+/**
+ * Whether an operation's effect can safely happen twice. Drives the retry
+ * policy during workflow certification: non-idempotent steps are never retried.
+ */
+export type IdempotencyClass = "read-only" | "idempotent" | "non-idempotent";
+
+/** A declarative assertion over one step's (already schema-valid) response. */
+export type Postcondition =
+  /** `path` resolves to something present and non-empty. */
+  | { kind: "non-empty"; path: string }
+  /** `path` equals a value a previous step extracted into workflow state. */
+  | { kind: "equals-state"; path: string; state: string }
+  /** the array at `path` has exactly as many items as the count at `totalPath`. */
+  | { kind: "count-matches"; path: string; totalPath: string };
+
+/** One ordered step of a workflow. Data, not code: it lives in the spec. */
+export interface WorkflowStep {
+  id: string;
+  /** Certified operation this step invokes. */
+  op: string;
+  /** State keys that must be bound (and fresh) before this step may run. */
+  requires?: string[];
+  /** Operation params taken from workflow state: param name -> state key. */
+  params?: Record<string, string>;
+  /** Operation params with literal values. */
+  constParams?: Record<string, unknown>;
+  /** State this step produces: state key -> path into the response. */
+  extract?: Record<string, string>;
+  /** State keys this step makes stale; later reuse is a certification failure. */
+  invalidates?: string[];
+  postconditions?: Postcondition[];
+  idempotency: IdempotencyClass;
+  /** Run in reverse step order after the workflow; failure fails the workflow. */
+  cleanup?: { op: string; params?: Record<string, string>; constParams?: Record<string, unknown> };
+}
+
+export interface WorkflowSpec {
+  id: string;
+  description?: string;
+  steps: WorkflowStep[];
+}
+
 export type AuthScheme =
   | { kind: "none" }
   | { kind: "bearer"; header: string }
@@ -108,6 +150,8 @@ export interface ConnectorSpec {
   derivedFrom: string;
   /** Provenance of the derive capture. Covered by specHash. */
   capture: CaptureManifest;
+  /** Multi-step workflows offered by this connector. Covered by specHash. */
+  workflows?: WorkflowSpec[];
 }
 
 /** Result of one certification check for one operation. */
@@ -143,6 +187,8 @@ export interface CertificationReport {
   verdict: "certified" | "partial" | "refused";
   /** Provenance of the holdout capture this report was produced against. */
   holdout: CaptureManifest;
+  /** Per-workflow certification outcomes. Only passing workflows are mounted. */
+  workflows: { id: string; pass: boolean; failure?: string; detail?: string }[];
 }
 
 /** The signed artifact. Verifiable with the registry public key. */
@@ -154,6 +200,8 @@ export interface BirthCertificate {
   certifiedOps: string[];
   refusedOps: { op: string; reason: string }[];
   mutationStats: MutationStats;
+  /** Workflows that passed workflow certification. Only these are mounted. */
+  certifiedWorkflows: string[];
   /** Hash of the derive manifest embedded in the certified spec. */
   captureManifestHash: string;
   /** Hash of the holdout manifest certification ran against. Distinct by construction. */

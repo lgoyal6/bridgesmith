@@ -6,7 +6,7 @@ import { loadHar } from "../src/capture/har.js";
 import { deriveSpec } from "../src/spec/derive.js";
 import { certify } from "../src/certify/certify.js";
 import { Adapter } from "../src/codegen/adapter.js";
-import { issueCertificate, verifyCertificate } from "../src/registry/certificate.js";
+import { ensureRegistryKey, issueCertificate, verifyCertificate } from "../src/registry/certificate.js";
 import { Registry } from "../src/registry/registry.js";
 import { captureA, captureB, capturePoisoned } from "./fixtures.js";
 
@@ -71,9 +71,10 @@ describe("birth certificate", () => {
     const spec = deriveSpec(loadHar(harFile(captureA())), { app: "events", captureLabel: "A", host: "example-events.com" });
     const { report } = await certify(spec, loadHar(harFile(captureB())), { deriveExchanges: loadHar(harFile(captureA())) });
     const cert = issueCertificate(spec, report, 1, dir);
-    expect(verifyCertificate(cert)).toBe(true);
+    const anchor = ensureRegistryKey(dir).publicPem;
+    expect(verifyCertificate(cert, anchor)).toBe(true);
     const tampered = { ...cert, certifiedOps: [...cert.certifiedOps, "smuggled_op"] };
-    expect(verifyCertificate(tampered)).toBe(false);
+    expect(verifyCertificate(tampered, anchor)).toBe(false);
   });
 
   it("registry stores and retrieves the latest valid version", async () => {

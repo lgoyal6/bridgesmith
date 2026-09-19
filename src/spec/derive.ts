@@ -95,8 +95,16 @@ export function deriveSpec(allExchanges: Exchange[], opts: DeriveOptions): Conne
     derivedAt: new Date().toISOString(),
     derivedFrom: opts.captureLabel,
   };
-  const specHash = sha256(canonicalJson({ ...spec, derivedAt: undefined }));
-  return { ...spec, specHash };
+  return { ...spec, specHash: specHashOf(spec) };
+}
+
+/**
+ * Content hash of a spec: everything except the derivation timestamp and the
+ * hash field itself. Stable across re-derivations of the same shape, and what a
+ * birth certificate binds to, so the registry can recompute it from spec.json.
+ */
+export function specHashOf(spec: Omit<ConnectorSpec, "specHash"> | ConnectorSpec): string {
+  return sha256(canonicalJson({ ...spec, derivedAt: undefined, specHash: undefined }));
 }
 
 function dominantOrigin(exchanges: Exchange[]): string {

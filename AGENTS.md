@@ -16,9 +16,10 @@ data it cannot certify.
 pnpm install --frozen-lockfile && pnpm build && pnpm test
 ```
 
-Expected: TypeScript compiles with no errors, and **10/10 vitest tests pass**
-across 3 files (`test/pipeline.test.ts`, `test/localstore.test.ts`,
-`test/selfheal.test.ts`). CI runs exactly this: `.github/workflows/ci.yml`.
+Expected: TypeScript compiles with no errors, and **22/22 vitest tests pass**
+across 4 files (`test/pipeline.test.ts`, `test/localstore.test.ts`,
+`test/selfheal.test.ts`, `test/certificate.test.ts`). CI runs exactly this:
+`.github/workflows/ci.yml`.
 
 Optional live demo against public APIs (needs network, no credentials):
 
@@ -35,6 +36,9 @@ pnpm demo   # scripts/demo.sh — forges Chess.com + Devpost, serves REST, iMess
 | Mutation suite proves the gate rejects wrong data, not just confirms it | `src/certify/mutate.ts`, asserted in `test/pipeline.test.ts` |
 | Uncertified / uncovered operations are refused, never mounted | `src/certify/certify.ts` (`refusedOps`, `uncoveredOps`); surfaces expose only `cert.certifiedOps` in `src/surfaces/mcp.ts`, `src/surfaces/rest.ts` |
 | ed25519-signed, tamper-evident birth certificates | `src/registry/certificate.ts` (`issueCertificate`, `verifyCertificate`); tamper test in `test/pipeline.test.ts` |
+| Certificates verify against the registry's OWN key (`.registry-key.pub`), never the key the certificate carries; no anchor => nothing is served | `src/registry/certificate.ts` (`loadTrustAnchor`, `verifyCertificate(cert, trustedPublicPem)`), `src/registry/registry.ts` (`load`); `test/certificate.test.ts` V1, V3, V8, V9 |
+| A mounted `spec.json` must hash to its certificate's `specHash`, so only certified operations can be mounted | `src/spec/derive.ts` (`specHashOf`), `src/registry/registry.ts` (`load`); `test/certificate.test.ts` V5, V6, V6b |
+| An invalid latest version never shadows an older fully valid one | `src/registry/registry.ts` (`latest`); `test/certificate.test.ts` V2, V7 |
 | Runtime never returns schema-invalid data (one validator shared with certification) | `src/codegen/adapter.ts`, `src/runtime/validate.ts` |
 | Drift trips a breaker → re-certify → hot-swap, or demote and refuse | `src/runtime/selfheal.ts`, `src/runtime/breaker.ts`; proven in `test/selfheal.test.ts` |
 | False-green rate (certified-then-failed-live) is measured | `src/runtime/breaker.ts` (`falseGreenRate`) |

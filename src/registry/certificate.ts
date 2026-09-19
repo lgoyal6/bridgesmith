@@ -1,10 +1,22 @@
 /**
  * Birth certificates: signed, verifiable proof that a connector version passed
  * certification. Signed with an ed25519 key generated per-registry (kept in
- * connectors/.registry-key, gitignored). Anyone with the public key can verify a
- * certificate without trusting us.
+ * connectors/.registry-key, gitignored).
+ *
+ * Verification is anchored: a certificate is valid only if it verifies under the
+ * registry's OWN public key (`.registry-key.pub`). The `publicKey` field inside
+ * the certificate is informational and must match that anchor; it is never used
+ * as the verification key on its own, because anything the certificate carries
+ * about itself is under the forger's control.
  */
-import { generateKeyPairSync, sign as edSign, verify as edVerify, createPrivateKey, createPublicKey } from "node:crypto";
+import {
+  generateKeyPairSync,
+  sign as edSign,
+  verify as edVerify,
+  createPrivateKey,
+  createPublicKey,
+  timingSafeEqual,
+} from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { BirthCertificate, CertificationReport, ConnectorSpec } from "../core/types.js";
@@ -26,6 +38,15 @@ export function ensureRegistryKey(dir: string): { privatePem: string; publicPem:
   writeFileSync(priv, privatePem, { mode: 0o600 });
   writeFileSync(pub, publicPem);
   return { privatePem, publicPem };
+}
+
+/**
+ * The registry's trust anchor: its own public key, or null if this registry has
+ * never issued a certificate. With no anchor nothing can be trusted (fail closed).
+ */
+export function loadTrustAnchor(dir: string): string | null {
+  const { pub } = keyPaths(dir);
+  return existsSync(pub) ? readFileSync(pub, "utf8") : null;
 }
 
 function signable(cert: Omit<BirthCertificate, "signature">): string {
@@ -54,13 +75,27 @@ export function issueCertificate(
   return { ...unsigned, signature: sig.toString("base64") };
 }
 
-export function verifyCertificate(cert: BirthCertificate): boolean {
-  const { signature, ...rest } = cert;
+/** Compare two public keys by their SPKI DER encoding, not by PEM text. */
+function sameKey(pemA: string, pemB: string): boolean {
+  const a = createPublicKey(pemA).export({ type: "spki", format: "der" });
+  const b = createPublicKey(pemB).export({ type: "spki", format: "der" });
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * True only if `cert` was signed by `trustedPublicPem` and claims that same key.
+ * A certificate that verifies under the key it carries but not under the
+ * registry's key is a forgery, not a certificate.
+ */
+export function verifyCertificate(cert: BirthCertificate, trustedPublicPem: string): boolean {
   try {
+    if (typeof cert?.signature !== "string" || typeof cert.publicKey !== "string") return false;
+    if (!sameKey(cert.publicKey, trustedPublicPem)) return false;
+    const { signature, ...rest } = cert;
     return edVerify(
       null,
       Buffer.from(signable(rest as Omit<BirthCertificate, "signature">)),
-      createPublicKey(cert.publicKey),
+      createPublicKey(trustedPublicPem),
       Buffer.from(signature, "base64"),
     );
   } catch {

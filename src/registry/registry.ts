@@ -3,10 +3,19 @@
  *   connectors/<app>/v<N>/{spec.json, certificate.json, report.json}
  * Uncertified attempts are never written here (refusal leaves no artifact to
  * accidentally mount).
+ *
+ * A version is served only if all of the following hold, checked on every read:
+ *   1. certificate.json parses and verifies under this registry's own public key
+ *      (`.registry-key.pub`, the trust anchor; absent anchor => nothing is valid);
+ *   2. the certificate names this app;
+ *   3. spec.json parses, names this app, and hashes to the certificate's specHash,
+ *      so the operations that get mounted are exactly the ones that were certified.
+ * Anything else is skipped, and an older version that does pass is served instead.
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import type { BirthCertificate, CertificationReport, ConnectorSpec } from "../core/types.js";
-import { verifyCertificate } from "./certificate.js";
+import { loadTrustAnchor, verifyCertificate } from "./certificate.js";
+import { specHashOf } from "../spec/derive.js";
 
 export class Registry {
   constructor(private readonly root: string) {
@@ -31,7 +40,7 @@ export class Registry {
     return dir;
   }
 
-  /** Latest certified version whose certificate signature still verifies. */
+  /** Latest version whose certificate verifies under the trust anchor and whose spec is bound to it. */
   latest(app: string): { spec: ConnectorSpec; cert: BirthCertificate; dir: string } | null {
     const dir = `${this.root}/${app}`;
     if (!existsSync(dir)) return null;
@@ -41,11 +50,8 @@ export class Registry {
       .sort((a, b) => b - a);
     for (const v of versions) {
       const vdir = `${dir}/v${v}`;
-      const cert: BirthCertificate = JSON.parse(readFileSync(`${vdir}/certificate.json`, "utf8"));
-      if (verifyCertificate(cert)) {
-        const spec: ConnectorSpec = JSON.parse(readFileSync(`${vdir}/spec.json`, "utf8"));
-        return { spec, cert, dir: vdir };
-      }
+      const loaded = this.load(app, vdir);
+      if (loaded) return { ...loaded, dir: vdir };
     }
     return null;
   }
@@ -69,7 +75,7 @@ export class Registry {
             version: cert.version,
             tier: cert.tier,
             ops: cert.certifiedOps.length,
-            valid: verifyCertificate(cert),
+            valid: this.load(app, `${appDir}/${v}`) !== null,
           });
         } catch {
           /* skip malformed */
@@ -77,5 +83,22 @@ export class Registry {
       }
     }
     return out;
+  }
+
+  /** The three checks above, or null. Never throws: a malformed artifact is just not served. */
+  private load(app: string, vdir: string): { spec: ConnectorSpec; cert: BirthCertificate } | null {
+    const anchor = loadTrustAnchor(this.root);
+    if (!anchor) return null;
+    try {
+      const cert: BirthCertificate = JSON.parse(readFileSync(`${vdir}/certificate.json`, "utf8"));
+      // `cert.app !== app` is defense-in-depth only: specHash covers the spec's app,
+      // so check 3 below already refuses any cross-app replay (see test V5).
+      if (cert.app !== app || !verifyCertificate(cert, anchor)) return null;
+      const spec: ConnectorSpec = JSON.parse(readFileSync(`${vdir}/spec.json`, "utf8"));
+      if (spec.app !== app || spec.specHash !== cert.specHash || specHashOf(spec) !== cert.specHash) return null;
+      return { spec, cert };
+    } catch {
+      return null;
+    }
   }
 }

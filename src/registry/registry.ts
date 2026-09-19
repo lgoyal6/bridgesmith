@@ -9,13 +9,17 @@
  *      (`.registry-key.pub`, the trust anchor; absent anchor => nothing is valid);
  *   2. the certificate names this app;
  *   3. spec.json parses, names this app, and hashes to the certificate's specHash,
- *      so the operations that get mounted are exactly the ones that were certified.
+ *      so the operations that get mounted are exactly the ones that were certified;
+ *   4. the capture manifest embedded in the spec hashes to the certificate's
+ *      captureManifestHash, so the recorded provenance is the provenance that was
+ *      signed (specHash alone excludes the capture timestamp, this does not).
  * Anything else is skipped, and an older version that does pass is served instead.
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import type { BirthCertificate, CertificationReport, ConnectorSpec } from "../core/types.js";
 import { loadTrustAnchor, verifyCertificate } from "./certificate.js";
 import { specHashOf } from "../spec/derive.js";
+import { manifestHash } from "../capture/manifest.js";
 
 export class Registry {
   constructor(private readonly root: string) {
@@ -85,7 +89,7 @@ export class Registry {
     return out;
   }
 
-  /** The three checks above, or null. Never throws: a malformed artifact is just not served. */
+  /** The four checks above, or null. Never throws: a malformed artifact is just not served. */
   private load(app: string, vdir: string): { spec: ConnectorSpec; cert: BirthCertificate } | null {
     const anchor = loadTrustAnchor(this.root);
     if (!anchor) return null;
@@ -96,6 +100,7 @@ export class Registry {
       if (cert.app !== app || !verifyCertificate(cert, anchor)) return null;
       const spec: ConnectorSpec = JSON.parse(readFileSync(`${vdir}/spec.json`, "utf8"));
       if (spec.app !== app || spec.specHash !== cert.specHash || specHashOf(spec) !== cert.specHash) return null;
+      if (manifestHash(spec.capture) !== cert.captureManifestHash) return null;
       return { spec, cert };
     } catch {
       return null;

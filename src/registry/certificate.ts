@@ -21,6 +21,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { BirthCertificate, CertificationReport, ConnectorSpec } from "../core/types.js";
 import { canonicalJson } from "../core/canon.js";
+import { manifestHash } from "../capture/manifest.js";
 
 function keyPaths(dir: string) {
   return { priv: `${dir}/.registry-key`, pub: `${dir}/.registry-key.pub` };
@@ -68,6 +69,8 @@ export function issueCertificate(
     certifiedOps: report.certifiedOps,
     refusedOps: report.refusedOps,
     mutationStats: report.mutation,
+    captureManifestHash: manifestHash(spec.capture),
+    holdoutManifestHash: manifestHash(report.holdout),
     issuedAt: new Date().toISOString(),
     publicKey: publicPem,
   };

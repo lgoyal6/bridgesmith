@@ -11,6 +11,12 @@ import { issueCertificate } from "../src/registry/certificate.js";
 import { ConnectorManager, type HealEvent } from "../src/runtime/selfheal.js";
 
 const ORIGIN = "http://w.local";
+// Derive and holdout must be INDEPENDENT slices of the store, so they are taken
+// with different limits and therefore different row sets. Taking both with the
+// same params makes the holdout a copy of the derive capture, and certify()
+// refuses that as circular.
+const DERIVE_PARAMS = { list: { limit: "20" } };
+const HOLDOUT_PARAMS = { list: { limit: "7" } };
 const OPS: LocalOp[] = [
   { id: "list", path: "/w", params: [{ name: "limit", default: "20" }], sql: (p) => `SELECT id, price FROM w LIMIT ${Number.parseInt(p.limit ?? "20", 10) || 20}` },
 ];
@@ -27,15 +33,15 @@ describe("self-heal", () => {
     const dir = mkdtempSync(join(tmpdir(), "heal-"));
     const db = join(dir, "w.db");
     await seed(db, "REAL", 20);
-    const a = await captureLocal(db, OPS, ORIGIN);
+    const a = await captureLocal(db, OPS, ORIGIN, DERIVE_PARAMS);
     const spec = deriveSpec(a, { app: "w", tier: "local-store", captureLabel: "A", minSamplesForRequired: 5 });
-    const { report, effectiveSpec } = await certify(spec, await captureLocal(db, OPS, ORIGIN), { deriveExchanges: a, minSamplesForRequired: 5 });
+    const { report, effectiveSpec } = await certify(spec, await captureLocal(db, OPS, ORIGIN, HOLDOUT_PARAMS), { deriveExchanges: a, minSamplesForRequired: 5 });
     const cert = issueCertificate(effectiveSpec, report, 1, join(dir, "reg"));
 
     const events: HealEvent[] = [];
     const mgr = new ConnectorManager(
       effectiveSpec, cert,
-      { recapture: () => captureLocal(db, OPS, ORIGIN), recaptureHoldout: () => captureLocal(db, OPS, ORIGIN), fetcher: localFetcher(db, OPS), deriveOpts: { app: "w", tier: "local-store", minSamplesForRequired: 5 }, registryDir: join(dir, "reg") },
+      { recapture: () => captureLocal(db, OPS, ORIGIN, DERIVE_PARAMS), recaptureHoldout: () => captureLocal(db, OPS, ORIGIN, HOLDOUT_PARAMS), fetcher: localFetcher(db, OPS), deriveOpts: { app: "w", tier: "local-store", minSamplesForRequired: 5 }, registryDir: join(dir, "reg") },
       (e) => events.push(e),
     );
 

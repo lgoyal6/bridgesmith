@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs";
 import type { Exchange } from "../core/types.js";
 import { redactExchange } from "./redact.js";
+import { BRIDGESMITH_VERSION } from "../core/version.js";
 
 interface HarEntry {
   startedDateTime?: string;
@@ -65,6 +66,7 @@ export function loadHar(path: string, opts: { hostFilter?: string } = {}): Excha
       responseBody: tryJson(e.response.content?.text, e.response.content?.encoding),
       ...(respType !== undefined ? { responseType: respType } : {}),
       ...(e.startedDateTime !== undefined ? { startedAt: e.startedDateTime } : {}),
+      capturedBy: `har-ingest/${BRIDGESMITH_VERSION}`,
     };
     out.push(redactExchange(ex));
   }

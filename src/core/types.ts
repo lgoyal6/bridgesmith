@@ -28,6 +28,32 @@ export interface Exchange {
   /** Content-Type of the response. */
   responseType?: string;
   startedAt?: string;
+  /** Capture driver that recorded this exchange, e.g. "har-ingest/0.1.0". Provenance. */
+  capturedBy?: string;
+}
+
+/**
+ * Provenance for one capture set: what evidence a certification actually ran
+ * against. Built by src/capture/manifest.ts. The derive manifest is embedded in
+ * the spec (so specHash covers it); both manifest hashes are signed into the
+ * birth certificate.
+ */
+export interface CaptureManifest {
+  app: string;
+  role: "derive" | "holdout";
+  /** Every origin seen in the set, sorted. */
+  targetOrigins: string[];
+  /** Driver that recorded the set, or "mixed(a+b)" when they disagree. */
+  driver: string;
+  capturedAt: string;
+  /** Redacted exchanges in the set. */
+  exchangeCount: number;
+  /** Per-exchange request and response body hashes, in capture order. */
+  bodies: { method: string; path: string; status: number; request: string; response: string }[];
+  /** Identity of the EVIDENCE (hash over `bodies`, excluding the timestamp). */
+  setId: string;
+  secretScan: { clean: boolean; findings: string[] };
+  toolchain: { node: string; bridgesmith: string };
 }
 
 /** JSON Schema subset we infer. Kept plain-object so it serializes into OpenAPI. */
@@ -80,6 +106,8 @@ export interface ConnectorSpec {
   derivedAt: string;
   /** Capture session the spec was derived from (never the holdout). */
   derivedFrom: string;
+  /** Provenance of the derive capture. Covered by specHash. */
+  capture: CaptureManifest;
 }
 
 /** Result of one certification check for one operation. */
@@ -113,6 +141,8 @@ export interface CertificationReport {
   /** Ops with no holdout coverage: refused by policy (never mount unexercised ops). */
   uncoveredOps: string[];
   verdict: "certified" | "partial" | "refused";
+  /** Provenance of the holdout capture this report was produced against. */
+  holdout: CaptureManifest;
 }
 
 /** The signed artifact. Verifiable with the registry public key. */
@@ -124,6 +154,10 @@ export interface BirthCertificate {
   certifiedOps: string[];
   refusedOps: { op: string; reason: string }[];
   mutationStats: MutationStats;
+  /** Hash of the derive manifest embedded in the certified spec. */
+  captureManifestHash: string;
+  /** Hash of the holdout manifest certification ran against. Distinct by construction. */
+  holdoutManifestHash: string;
   issuedAt: string;
   /** ed25519 signature (base64) over the canonicalized certificate sans signature. */
   signature: string;

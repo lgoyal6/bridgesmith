@@ -9,6 +9,7 @@
  */
 import type { Exchange } from "../core/types.js";
 import { redactExchange } from "./redact.js";
+import { BRIDGESMITH_VERSION } from "../core/version.js";
 
 export async function captureUrls(urls: string[], opts: { headers?: Record<string, string>; delayMs?: number } = {}): Promise<Exchange[]> {
   const out: Exchange[] = [];
@@ -37,6 +38,7 @@ export async function captureUrls(urls: string[], opts: { headers?: Record<strin
         responseHeaders,
         ...(body !== undefined ? { responseBody: body } : {}),
         ...(res.headers.get("content-type") ? { responseType: res.headers.get("content-type")! } : {}),
+        capturedBy: `live-fetch/${BRIDGESMITH_VERSION}`,
       }),
     );
     if (opts.delayMs) await new Promise((r) => setTimeout(r, opts.delayMs));

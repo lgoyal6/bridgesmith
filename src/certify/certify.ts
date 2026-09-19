@@ -30,6 +30,7 @@ import { inferSchema } from "../spec/infer.js";
 import { generateMutants } from "./mutate.js";
 import { validateAgainst } from "../runtime/validate.js";
 import { templatePaths } from "../spec/paths.js";
+import { specHashOf } from "../spec/derive.js";
 
 export interface CertifyOptions {
   /** Max repair iterations per op. */
@@ -158,9 +159,15 @@ export async function certify(
     verdict,
   };
 
+  // The mounted spec carries only certified ops and any repaired schemas, so its
+  // hash differs from the derived spec's: recompute it, because the certificate
+  // binds to what is MOUNTED and the registry re-derives this hash on every read.
+  const effectiveSpec: ConnectorSpec = { ...spec, operations: effectiveOps };
+  effectiveSpec.specHash = specHashOf(effectiveSpec);
+
   return {
     report,
-    effectiveSpec: { ...spec, operations: effectiveOps },
+    effectiveSpec,
     repairedOps,
   };
 }

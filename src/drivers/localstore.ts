@@ -14,6 +14,7 @@
 import { execa } from "execa";
 import type { Exchange } from "../core/types.js";
 import type { Fetcher } from "../codegen/adapter.js";
+import { BRIDGESMITH_VERSION } from "../core/version.js";
 
 export interface LocalOp {
   id: string;
@@ -54,6 +55,7 @@ export async function captureLocal(
       responseHeaders: { "content-type": "application/json" },
       responseBody: { rows },
       responseType: "application/json",
+      capturedBy: `local-store-sqlite/${BRIDGESMITH_VERSION}`,
     });
   }
   return out;

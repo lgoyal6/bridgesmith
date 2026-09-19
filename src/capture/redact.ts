@@ -37,6 +37,28 @@ export function redactExchange(ex: Exchange): Exchange {
   return { ...ex, requestHeaders, responseHeaders, query };
 }
 
+/**
+ * Non-throwing secret scan over a whole capture set, for the capture manifest.
+ * Findings name the location, never the value, so the manifest itself can be
+ * committed. A clean scan is a claim the manifest is signed over, not a comment.
+ */
+export function scanForSecrets(exchanges: Exchange[]): { clean: boolean; findings: string[] } {
+  const findings: string[] = [];
+  for (const ex of exchanges) {
+    const where = `${ex.method} ${ex.path}`;
+    for (const [k, v] of Object.entries(ex.requestHeaders)) {
+      if (SECRET_HEADERS.has(k.toLowerCase()) && v !== REDACTED) findings.push(`request header "${k}" at ${where}`);
+    }
+    for (const [k, v] of Object.entries(ex.responseHeaders)) {
+      if (SECRET_HEADERS.has(k.toLowerCase()) && v !== REDACTED) findings.push(`response header "${k}" at ${where}`);
+    }
+    for (const [k, v] of Object.entries(ex.query)) {
+      if (SECRET_QUERY_PARAMS.some((re) => re.test(k)) && v !== REDACTED) findings.push(`query param "${k}" at ${where}`);
+    }
+  }
+  return { clean: findings.length === 0, findings: findings.slice(0, 20) };
+}
+
 /** Defense in depth: refuse to persist anything that still smells like a live secret. */
 export function assertRedacted(exchanges: Exchange[]): void {
   for (const ex of exchanges) {

@@ -9,6 +9,7 @@ import { apiExchanges } from "../capture/har.js";
 import { inferSchema } from "./infer.js";
 import { templatePaths } from "./paths.js";
 import { REDACTED } from "../capture/redact.js";
+import { buildCaptureManifest } from "../capture/manifest.js";
 
 const MIN_SAMPLES_PER_OP = 1;
 
@@ -20,6 +21,8 @@ export interface DeriveOptions {
   captureLabel: string;
   /** Confidence floor for marking response fields required. See infer.ts. */
   minSamplesForRequired?: number;
+  /** Overrides the driver recorded on the exchanges when building the manifest. */
+  captureDriver?: string;
 }
 
 export function deriveSpec(allExchanges: Exchange[], opts: DeriveOptions): ConnectorSpec {
@@ -94,17 +97,31 @@ export function deriveSpec(allExchanges: Exchange[], opts: DeriveOptions): Conne
     operations,
     derivedAt: new Date().toISOString(),
     derivedFrom: opts.captureLabel,
+    // Provenance covers the IN-SCOPE exchanges the operations were inferred from,
+    // not the raw capture: filtered-out assets and 4xx noise are not evidence.
+    capture: buildCaptureManifest(inScope, {
+      app: opts.app,
+      role: "derive",
+      ...(opts.captureDriver !== undefined ? { driver: opts.captureDriver } : {}),
+    }),
   };
   return { ...spec, specHash: specHashOf(spec) };
 }
 
 /**
- * Content hash of a spec: everything except the derivation timestamp and the
- * hash field itself. Stable across re-derivations of the same shape, and what a
- * birth certificate binds to, so the registry can recompute it from spec.json.
+ * Content hash of a spec: everything except the two wall-clock timestamps and
+ * the hash field itself. Stable across re-derivations of the same traffic, and
+ * what a birth certificate binds to, so the registry can recompute it from
+ * spec.json.
+ *
+ * `capture.capturedAt` is excluded for the same reason as `derivedAt` - two runs
+ * over identical evidence must agree - but it is NOT unbound: the certificate
+ * signs `manifestHash(spec.capture)`, which covers the timestamp, and the
+ * registry checks that too (see Registry.load).
  */
 export function specHashOf(spec: Omit<ConnectorSpec, "specHash"> | ConnectorSpec): string {
-  return sha256(canonicalJson({ ...spec, derivedAt: undefined, specHash: undefined }));
+  const capture = spec.capture ? { ...spec.capture, capturedAt: undefined } : undefined;
+  return sha256(canonicalJson({ ...spec, derivedAt: undefined, specHash: undefined, capture }));
 }
 
 function dominantOrigin(exchanges: Exchange[]): string {

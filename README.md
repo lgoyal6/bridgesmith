@@ -105,7 +105,7 @@ Plus **iMessage** as the local-store tier — an app with no network API at all,
 
 ```bash
 pnpm install && pnpm build
-pnpm test                              # 22 tests, all green
+pnpm test                              # 33 tests, all green
 
 # Forge + certify a connector from a public API (two independent capture slices):
 node dist/cli/index.js forge devpost \

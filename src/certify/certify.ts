@@ -31,6 +31,7 @@ import { generateMutants } from "./mutate.js";
 import { validateAgainst } from "../runtime/validate.js";
 import { templatePaths } from "../spec/paths.js";
 import { specHashOf } from "../spec/derive.js";
+import { buildCaptureManifest, isSameEvidence } from "../capture/manifest.js";
 
 export interface CertifyOptions {
   /** Max repair iterations per op. */
@@ -41,6 +42,8 @@ export interface CertifyOptions {
   canary?: (op: OperationSpec) => Promise<{ ok: boolean; detail: string }>;
   /** Confidence floor used when re-inferring during repair. */
   minSamplesForRequired?: number;
+  /** Overrides the driver recorded on the holdout exchanges when building its manifest. */
+  holdoutDriver?: string;
   log?: (line: string) => void;
 }
 
@@ -67,6 +70,22 @@ export async function certify(
   const repairedOps: { op: string; iterations: number }[] = [];
 
   const holdoutApi = apiExchanges(holdout).filter((e) => e.url.startsWith(spec.baseUrl));
+
+  // Provenance of what this certification is actually testing against. Built
+  // before any check runs, because a holdout that is the derive capture under a
+  // different name cannot certify anything: every op would replay against the
+  // samples its own schema was inferred from and pass by construction.
+  const holdoutManifest = buildCaptureManifest(holdoutApi, {
+    app: spec.app,
+    role: "holdout",
+    ...(opts.holdoutDriver !== undefined ? { driver: opts.holdoutDriver } : {}),
+  });
+  if (isSameEvidence(spec.capture, holdoutManifest)) {
+    throw new Error(
+      `holdout is the same evidence as the derive capture (setId ${holdoutManifest.setId.slice(0, 12)}): certification would be circular`,
+    );
+  }
+
   const effectiveOps: OperationSpec[] = [];
 
   for (const op of spec.operations) {
@@ -157,6 +176,7 @@ export async function certify(
     refusedOps,
     uncoveredOps,
     verdict,
+    holdout: holdoutManifest,
   };
 
   // The mounted spec carries only certified ops and any repaired schemas, so its

@@ -8,10 +8,14 @@
  *
  * Every response is validated with the SAME validator certification used, so a
  * connector cannot return schema-invalid data at runtime without it being caught
- * and counted.
+ * and counted. If the certified spec declares runtime-checkable semantic
+ * invariants, those run after schema validation and fail the call separately,
+ * so a schema false green and a semantic false green are never the same number.
  */
 import type { AuthScheme, ConnectorSpec, OperationSpec, TraceEvent } from "../core/types.js";
 import { validateAgainst } from "../runtime/validate.js";
+import { checkResponseInvariants } from "../certify/semantic.js";
+import { check, guardedFetcher, PermissionError, type PermissionDecision } from "../runtime/permissions.js";
 
 export interface Secrets {
   bearer?: string;
@@ -34,6 +38,14 @@ export type Fetcher = (
 ) => Promise<{ status: number; json: () => Promise<unknown>; text: () => Promise<string>; headers: { get(n: string): string | null } }>;
 
 export interface AdapterOptions {
+  /**
+   * Run without the permission guard. Certification and replay use this, because
+   * they read from bundled evidence rather than reaching anything. Serving a
+   * connector never does.
+   */
+  unguarded?: boolean;
+  /** Notified on every refusal, with the rule that refused and never the value. */
+  onDeny?: (d: PermissionDecision) => void;
   secrets?: Secrets;
   fetcher?: Fetcher;
   onTrace?: (t: TraceEvent) => void;
@@ -63,9 +75,39 @@ export class Adapter {
       return this.trace(op, { ok: false, outcome: "refused", error: `unknown operation ${opId}`, ms: 0 });
     }
 
-    const url = this.buildUrl(op, params);
-    const headers = this.authHeaders();
-    const fetcher = this.opts.fetcher ?? defaultFetcher;
+    // CAPABILITY GATE, before anything is built or sent. A connector with no
+    // permission manifest has no capability budget, so it gets none: absent is
+    // not permissive.
+    const perms = this.spec.permissions;
+    if (!this.opts.unguarded) {
+      if (!perms) {
+        return this.trace(op, { ok: false, outcome: "refused", error: "no permission manifest: this connector has no capability budget", ms: clock() - start });
+      }
+      const opDecision = check(perms, { kind: "http", op: op.id, method: op.method, url: safeUrl(this.spec.baseUrl, op.pathTemplate) });
+      if (!opDecision.allowed) {
+        this.opts.onDeny?.(opDecision);
+        return this.trace(op, { ok: false, outcome: "refused", error: `permission denied: ${opDecision.reason}`, ms: clock() - start });
+      }
+    }
+
+    // A missing path parameter is a caller error, not a crash: `call` must never
+    // throw, because every caller of it (surfaces, workflows, replay) treats a
+    // CallResult as the complete answer and an exception escapes all of that.
+    let url: string;
+    try {
+      url = this.buildUrl(op, params);
+    } catch (e) {
+      return this.trace(op, { ok: false, outcome: "refused", error: (e as Error).message, ms: clock() - start });
+    }
+    let headers: Record<string, string>;
+    try {
+      headers = this.authHeaders();
+    } catch (e) {
+      if (e instanceof PermissionError) this.opts.onDeny?.(e.decision);
+      return this.trace(op, { ok: false, outcome: "refused", error: (e as Error).message, ms: clock() - start });
+    }
+    const raw = this.opts.fetcher ?? defaultFetcher;
+    const fetcher = this.opts.unguarded || !perms ? raw : guardedFetcher(perms, raw, (d) => this.opts.onDeny?.(d));
     let res;
     try {
       res = await fetcher(url, {
@@ -74,6 +116,9 @@ export class Adapter {
         ...(op.mutating && params["body"] !== undefined ? { body: JSON.stringify(params["body"]) } : {}),
       });
     } catch (e) {
+      if (e instanceof PermissionError) {
+        return this.trace(op, { ok: false, outcome: "refused", error: e.message, ms: clock() - start });
+      }
       return this.trace(op, {
         ok: false,
         outcome: "network-error",
@@ -105,6 +150,21 @@ export class Adapter {
       });
     }
 
+    // Semantic gate: shape-valid but meaning-wrong data is refused too, and
+    // reported under its own outcome so the two false-green rates stay separate.
+    const violations = checkResponseInvariants(this.spec.semanticInvariants, op.id, data);
+    if (violations.length > 0) {
+      const first = violations[0]!;
+      return this.trace(op, {
+        ok: false,
+        outcome: "semantic-violation",
+        status: res.status,
+        // id first: attribution must be stable even when the readable label changes
+        error: `semantic invariant ${first.id} (${first.label}): ${first.detail}`,
+        ms: clock() - start,
+      });
+    }
+
     return this.trace(op, { ok: true, outcome: "ok", status: res.status, data, ms: clock() - start });
   }
 
@@ -123,21 +183,38 @@ export class Adapter {
     return url.toString();
   }
 
+  /**
+   * Reading a secret is a capability like any other. A connector whose manifest
+   * declares no secret - or declares the `public` data class - cannot attach one
+   * even if the caller hands it over, which is the case where a read-only public
+   * connector quietly starts sending someone's token.
+   */
   private authHeaders(): Record<string, string> {
     const s = this.opts.secrets ?? {};
     const headers: Record<string, string> = { accept: "application/json" };
     const auth: AuthScheme = this.spec.auth;
+    if (auth.kind === "none") return headers;
+
+    const value = auth.kind === "bearer" ? s.bearer : auth.kind === "header" ? s.apiKey : s.cookie;
+    if (value === undefined) return headers;
+
+    if (!this.opts.unguarded) {
+      const perms = this.spec.permissions;
+      const decision = perms
+        ? check(perms, { kind: "secret", secretName: auth.kind })
+        : ({ allowed: false, reason: "no permission manifest: no secret may be read" } as PermissionDecision);
+      if (!decision.allowed) throw new PermissionError(decision);
+    }
+
     switch (auth.kind) {
       case "bearer":
-        if (s.bearer) headers[auth.header] = s.bearer.startsWith("Bearer ") ? s.bearer : `Bearer ${s.bearer}`;
+        headers[auth.header] = value.startsWith("Bearer ") ? value : `Bearer ${value}`;
         break;
       case "header":
-        if (s.apiKey) headers[auth.header] = s.apiKey;
+        headers[auth.header] = value;
         break;
       case "cookie":
-        if (s.cookie) headers["cookie"] = s.cookie;
-        break;
-      case "none":
+        headers["cookie"] = value;
         break;
     }
     return headers;
@@ -154,6 +231,15 @@ export class Adapter {
       ...(r.error !== undefined ? { detail: r.error } : {}),
     });
     return r;
+  }
+}
+
+/** Best-effort URL for the pre-flight capability check, before params are bound. */
+function safeUrl(baseUrl: string, pathTemplate: string): string {
+  try {
+    return new URL(pathTemplate.replace(/\{[^}]+\}/g, "_"), baseUrl).toString();
+  } catch {
+    return `${baseUrl}${pathTemplate}`;
   }
 }
 

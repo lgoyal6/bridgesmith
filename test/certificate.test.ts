@@ -180,6 +180,26 @@ describe("certificate: forgery and substitution are refused", () => {
     expect(reg.list().every((r) => r.valid === false)).toBe(true);
   });
 
+  it("V10 re-signing with an untrusted key fails even when the embedded publicKey matches the anchor", async () => {
+    const { cert, trusted } = await legitRegistry();
+    // The subtlest forgery: claim the right key in the right field, sign with another.
+    // Checking publicKey == anchor is necessary and nowhere near sufficient - the
+    // signature must verify UNDER the anchor, not merely be accompanied by it.
+    const attacker = generateKeyPairSync("ed25519");
+    const { signature: _s, ...body } = { ...cert, certifiedOps: [...cert.certifiedOps, "delete_everything"] };
+    const resigned: BirthCertificate = {
+      ...body,
+      publicKey: trusted, // identical to the trust anchor, byte for byte
+      signature: edSign(
+        null,
+        Buffer.from(canonicalJson({ ...body, publicKey: trusted, signature: undefined })),
+        createPrivateKey(attacker.privateKey.export({ type: "pkcs8", format: "pem" }).toString()),
+      ).toString("base64"),
+    };
+    expect(resigned.publicKey).toBe(trusted);
+    expect(verifyCertificate(resigned, trusted)).toBe(false);
+  });
+
   it("V9 a certificate copied from a DIFFERENT registry (different key) is refused here", async () => {
     const mine = await legitRegistry();
     const theirs = await legitRegistry();

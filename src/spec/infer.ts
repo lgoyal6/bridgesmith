@@ -10,6 +10,22 @@ import type { JsonSchema } from "../core/types.js";
 
 const MAX_ARRAY_SAMPLES = 50;
 
+/**
+ * A closed vocabulary is a strong claim: every future value must already be in
+ * the list. Two floors keep it honest.
+ *
+ * MIN_ENUM_VALUES: one observed value is not a vocabulary, it is a coincidence.
+ * A capture of ten grandmasters shows `title: "GM"` ten times; asserting
+ * `enum: ["GM"]` then rejects the first International Master at runtime - a
+ * certified-then-failed call, i.e. a schema false green manufactured by the
+ * inference itself.
+ *
+ * MIN_ENUM_SUPPORT: each value must RECUR. A value seen once is evidence the
+ * field is open, not evidence of a closed set.
+ */
+const MIN_ENUM_VALUES = 2;
+const MIN_ENUM_SUPPORT = 3;
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATETIME_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
 const URI_RE = /^https?:\/\//;
@@ -53,7 +69,7 @@ export function inferSchema(samples: unknown[], opts: InferOptions = {}): JsonSc
       schema = inferArray(nonNull as unknown[][], opts);
       break;
     case "string":
-      schema = inferString(nonNull as string[]);
+      schema = inferString(nonNull as string[], opts);
       break;
     default:
       schema = { type };
@@ -106,23 +122,56 @@ function inferObject(samples: Record<string, unknown>[], opts: InferOptions): Js
 }
 
 function inferArray(samples: unknown[][], opts: InferOptions): JsonSchema {
-  const elements = samples.flat().slice(0, MAX_ARRAY_SAMPLES);
-  return { type: "array", items: elements.length ? inferSchema(elements, opts) : {} };
+  return { type: "array", items: stratify(samples).length ? inferSchema(stratify(samples), opts) : {} };
 }
 
-function inferString(samples: string[]): JsonSchema {
+/**
+ * Draw the element budget round-robin across the source arrays instead of
+ * taking a flat prefix.
+ *
+ * This is load-bearing for the repair loop. Repair re-infers over
+ * [...deriveSamples, ...holdoutSamples]; with a prefix, a derive capture whose
+ * arrays alone fill MAX_ARRAY_SAMPLES truncates the holdout away entirely, so
+ * repair re-derives the SAME schema and the operation is refused after two
+ * iterations that could never have succeeded. Round-robin guarantees every
+ * response body contributes before any body contributes twice, and stays
+ * deterministic.
+ */
+function stratify(arrays: unknown[][]): unknown[] {
+  const sources = arrays.filter((a) => a.length > 0);
+  const out: unknown[] = [];
+  for (let i = 0; out.length < MAX_ARRAY_SAMPLES; i++) {
+    let advanced = false;
+    for (const a of sources) {
+      if (i >= a.length) continue;
+      out.push(a[i]);
+      advanced = true;
+      if (out.length >= MAX_ARRAY_SAMPLES) break;
+    }
+    if (!advanced) break;
+  }
+  return out;
+}
+
+function inferString(samples: string[], opts: InferOptions = {}): JsonSchema {
   const schema: JsonSchema = { type: "string" };
   if (samples.length > 0 && samples.every((s) => UUID_RE.test(s))) schema.format = "uuid";
   else if (samples.length > 0 && samples.every((s) => DATETIME_RE.test(s))) schema.format = "date-time";
   else if (samples.length > 0 && samples.every((s) => URI_RE.test(s))) schema.format = "uri";
 
-  // Conservative enum detection: enough samples, low cardinality, short tokens.
-  const distinct = new Set(samples);
+  // Conservative enum detection: enough samples, low cardinality, short tokens,
+  // at least two values, and every value seen often enough to look like a member
+  // of a set rather than a one-off.
+  const counts = new Map<string, number>();
+  for (const s of samples) counts.set(s, (counts.get(s) ?? 0) + 1);
+  const distinct = [...counts.keys()];
   if (
-    samples.length >= 8 &&
-    distinct.size <= 5 &&
-    distinct.size / samples.length <= 0.3 &&
-    [...distinct].every((s) => s.length <= 32 && !DATETIME_RE.test(s))
+    samples.length >= (opts.minSamplesForRequired ?? 8) &&
+    distinct.length >= MIN_ENUM_VALUES &&
+    distinct.length <= 5 &&
+    distinct.length / samples.length <= 0.3 &&
+    [...counts.values()].every((n) => n >= MIN_ENUM_SUPPORT) &&
+    distinct.every((s) => s.length <= 32 && !DATETIME_RE.test(s))
   ) {
     schema.enum = [...distinct].sort();
   }

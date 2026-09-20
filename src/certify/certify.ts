@@ -34,6 +34,7 @@ import { specHashOf } from "../spec/derive.js";
 import { buildCaptureManifest, isSameEvidence } from "../capture/manifest.js";
 import { replayFetcher } from "./replay.js";
 import { runWorkflow } from "./workflow.js";
+import { assertUniqueInvariantIds, certifySemantics } from "./semantic.js";
 
 export interface CertifyOptions {
   /** Max repair iterations per op. */
@@ -72,6 +73,8 @@ export async function certify(
   const refusedOps: { op: string; reason: string }[] = [];
   const uncoveredOps: string[] = [];
   const repairedOps: { op: string; iterations: number }[] = [];
+
+  assertUniqueInvariantIds(spec);
 
   const holdoutApi = apiExchanges(holdout).filter((e) => e.url.startsWith(spec.baseUrl));
 
@@ -193,10 +196,38 @@ export async function certify(
     }
   }
 
+  // --- semantic invariants over the holdout corpus ---
+  // Evaluated against the spec carrying only certified ops, so an invariant
+  // cannot be satisfied by evidence from an operation that was refused.
+  const semantic = certifySemantics(replaySpec, holdoutApi);
+  for (const c of semantic) log(`${c.pass ? "CERTIFY" : "REFUSE"} invariant ${c.label}${c.pass ? "" : `: ${c.detail}`}`);
+
+  // THREE distinct verdicts, deliberately not collapsed into one.
+  // A connector can be perfectly well-typed and still mean the wrong thing, so a
+  // schema pass must never be able to carry a semantic failure over the line.
+  const schemaVerdict: CertificationReport["schemaVerdict"] =
+    certifiedOps.length === 0 ? "refused" : refusedOps.length + uncoveredOps.length > 0 ? "partial" : "certified";
+
+  const declared = spec.semanticInvariants ?? [];
+  const failedSemantic = semantic.filter((c) => !c.pass);
+  const blockingSemantic = failedSemantic.filter((c) => c.severity === "blocking");
+  const semanticVerdict: CertificationReport["semanticVerdict"] =
+    declared.length === 0
+      ? "not-declared" // declaring nothing is a shape-only connector, NOT a semantic pass
+      : blockingSemantic.length === semantic.length
+        ? "refused"
+        : failedSemantic.length > 0
+          ? "partial"
+          : "certified";
+
+  // The mount decision is never better than its inputs. A workflow failure or a
+  // blocking invariant failure degrades it even when every schema check passed.
   const verdict: CertificationReport["verdict"] =
-    certifiedOps.length === 0
+    schemaVerdict === "refused" || semanticVerdict === "refused"
       ? "refused"
-      : refusedOps.length + uncoveredOps.length + workflowResults.filter((w) => !w.pass).length > 0
+      : schemaVerdict === "partial" ||
+          semanticVerdict === "partial" ||
+          workflowResults.some((w) => !w.pass)
         ? "partial"
         : "certified";
 
@@ -210,9 +241,12 @@ export async function certify(
     certifiedOps,
     refusedOps,
     uncoveredOps,
+    schemaVerdict,
+    semanticVerdict,
     verdict,
     holdout: holdoutManifest,
     workflows: workflowResults,
+    semantic,
   };
 
   // The mounted spec carries only certified ops and any repaired schemas, so its
@@ -221,10 +255,15 @@ export async function certify(
   // Only certified workflows are carried into the mounted spec, for the same
   // reason only certified ops are: a refused workflow must leave nothing to call.
   const mountedWorkflows = (spec.workflows ?? []).filter((w) => certifiedWorkflows.includes(w.id));
+  // An invariant that did not hold over the holdout is not enforced at runtime
+  // either: mounting it would turn every live call into a known-failing check.
+  const held = new Set(semantic.filter((c) => c.pass).map((c) => c.id));
+  const mountedInvariants = declared.filter((inv) => held.has(inv.id));
   const effectiveSpec: ConnectorSpec = {
     ...spec,
     operations: effectiveOps,
     ...(spec.workflows ? { workflows: mountedWorkflows } : {}),
+    ...(spec.semanticInvariants ? { semanticInvariants: mountedInvariants } : {}),
   };
   effectiveSpec.specHash = specHashOf(effectiveSpec);
 

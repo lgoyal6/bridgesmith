@@ -101,18 +101,22 @@ user-authored, Cedar is the right answer and this struct is the wrong one.
 **What it does.** A capability-based syscall interface for WebAssembly, so
 untrusted code runs with only the host imports it was granted.
 
-**Evaluated and not used, with a reason.** WASI isolates untrusted *code*.
-Bridgesmith generates no code: the adapter is one hand-written, spec-driven
-executor, and a connector is data. Wrapping that executor in WASI would confine
-the one component nobody needs protecting from, while the real capability
-question — which origins, paths, files and secrets a spec may reach — would still
-be decided on the other side of the boundary. A WASI module needs its host
-imports whitelisted, and that whitelist *is* the permission manifest. So the
-isolation layer here is capability mediation at egress.
+**Evaluated and not used, with a reason.** WASI isolates untrusted *code*. The
+trusted Bridgesmith adapter is one hand-written, spec-driven executor, and a
+connector is data. Wrapping that executor in WASI would confine the one component
+nobody needs protecting from, while the real capability question — which
+origins, paths, files and secrets a spec may reach — would still be decided on
+the other side of the boundary. A WASI module needs its host imports
+whitelisted, and that whitelist *is* the permission manifest. So the isolation
+layer here is capability mediation at egress.
 
-This flips the moment `emit.ts` writes a runnable connector package. That code
-would be generated, would execute, and would need real confinement — with this
-manifest as its import whitelist rather than a substitute for it.
+`src/codegen/dotnet.ts` does emit runnable consumer code, but not an alternate
+connector runtime: it can only call the guarded REST facade and re-checks the
+exact certified identity before every operation. It runs under the consuming
+application's ordinary .NET trust boundary. If Bridgesmith later emits generated
+code that executes upstream calls inside its own process, then real confinement
+becomes necessary, with the permission manifest as its import whitelist rather
+than a substitute for it.
 
 ## What is left that is Bridgesmith's own
 

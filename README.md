@@ -6,8 +6,9 @@
 
 [![CI](https://github.com/lgoyal6/bridgesmith/actions/workflows/ci.yml/badge.svg)](https://github.com/lgoyal6/bridgesmith/actions/workflows/ci.yml)
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-5FA04E?logo=nodedotjs&logoColor=white)](package.json)
+[![.NET 8](https://img.shields.io/badge/generated_clients-.NET_8-512BD4?logo=dotnet&logoColor=white)](src/codegen/dotnet.ts)
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
-[![Tests](https://img.shields.io/badge/tests-10%2F10-35d07f)](test)
+[![Tests](https://img.shields.io/badge/tests-157%2F157-35d07f)](test)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 <a href="https://www.youtube.com/watch?v=HA4aw3cb8B4"><img src="https://img.youtube.com/vi/HA4aw3cb8B4/maxresdefault.jpg" alt="Watch the 2-minute Bridgesmith demo" width="640"></a>
@@ -73,10 +74,10 @@ The core idea: **certification is the gate between *generated* and *mounted*.** 
 | Derive | trie path-templating (varying id vs distinct resource by cardinality); schema inference with an **evidence floor** (a field is `required` only with enough samples) | `src/spec/` |
 | Certify | independent-holdout replay + mutation suite + bounded repair loop | `src/certify/` |
 | Sign | ed25519 birth certificate over canonical JSON; on-disk registry | `src/registry/` |
-| Serve | one spec-driven adapter → MCP + REST surfaces, exposing certified ops only | `src/codegen/`, `src/surfaces/` |
+| Serve | one spec-driven adapter → MCP + REST surfaces; optional typed .NET 8 clients bind to the exact certified identity | `src/codegen/`, `src/surfaces/` |
 | Guard | runtime schema gate (shared validator), circuit breaker, **false-green rate**, self-heal | `src/runtime/` |
 
-The LLM plans (which tier, when to re-capture, when to refuse); everything that produces a guarantee is deterministic code, so there is no generated-code failure surface to trust.
+The LLM plans (which tier, when to re-capture, when to refuse); everything that produces a guarantee is deterministic code. The trusted runtime remains the one spec-driven adapter. Generated .NET clients are consumer-side packages that re-check the facade's certificate identity before every operation, not a second implementation of the trust engine.
 
 ## Why it matters
 
@@ -105,7 +106,7 @@ Plus **iMessage** as the local-store tier — an app with no network API at all,
 
 ```bash
 pnpm install && pnpm build
-pnpm test                              # 154 tests, all green
+pnpm test                              # 157 tests, all green
 
 # Forge + certify a connector from a public API (two independent capture slices):
 node dist/cli/index.js forge devpost \
@@ -116,6 +117,7 @@ node dist/cli/index.js forge devpost \
 node dist/cli/index.js list                                   # registry + certificate validity
 node dist/cli/index.js call devpost get_api_hackathons --param page=12
 node dist/cli/index.js serve devpost                          # REST facade: GET /manifest, POST /op/:opId
+node dist/cli/index.js emit-dotnet devpost --out ./generated  # typed net8.0 package; certified ops only
 ```
 
 Reproduce the evidence:
@@ -129,6 +131,7 @@ pnpm tsx scripts/drift-proof.ts            # one schema drift and one semantic f
                                            #   detected, attributed, bundled, replayed offline
 pnpm tsx scripts/write-workflow-proof.ts   # a certified multi-step WRITE workflow, replayed
                                            #   fixtures only — nothing real is mutated
+DOTNET=/path/to/dotnet pnpm proof:dotnet   # generate + compile + call + prove refusal end to end
 ```
 
 How the trust chain fits together: [`docs/TRUST-CHAIN.md`](docs/TRUST-CHAIN.md).
@@ -161,6 +164,7 @@ The runtime gate caught the false green **loudly** as a schema violation and nev
 | Derived-api + local-store tiers, end to end | **Works.** verified on live Chess.com/Devpost + SQLite. |
 | Independent-holdout certification + mutation suite | **Works.** 40/40 mutants caught on both live targets. |
 | Signed certificates anchored to the registry's own key, registry, MCP + REST surfaces | **Works.** |
+| Typed .NET 8 client packages for certified connectors | **Works.** deterministic models and methods; exact app/version/spec/op-set check before every call; `scripts/dotnet-proof.ts`. |
 | Self-heal (drift → re-certify → hot-swap, or demote) | **Works.** `scripts/selfheal-proof.ts`. |
 | Declared semantic invariants (totals, cross-endpoint id agreement, vocabulary, ordering, pagination union, unit drift) | **Works.** six named classes; `test/semantic.test.ts`. |
 | Version compatibility classification + approval-gated promotion | **Works.** `scripts/`/`src/registry/compat.ts`. |
@@ -171,7 +175,7 @@ The runtime gate caught the false green **loudly** as a schema violation and nev
 | **General** semantic correctness | **Out of scope, by design.** only DECLARED invariants are certified; a connector declaring none reports `semanticVerdict: "not-declared"`, never a pass. |
 | Write/mutating operations against a live third party | **Never.** write workflows are certified against replayed fixtures only. |
 | Key rotation, revocation, effective-time verification | **Not implemented.** see [`docs/KEY-LIFECYCLE-GAP.md`](docs/KEY-LIFECYCLE-GAP.md). |
-| Code sandboxing (WASI or equivalent) | **Not applicable today.** no generated code executes; see [`docs/PRIOR-ART.md`](docs/PRIOR-ART.md). |
+| Code sandboxing (WASI or equivalent) | **Not applicable to the trusted runtime today.** generated .NET clients run in the caller's process and only invoke the guarded facade; no generated code executes inside Bridgesmith. See [`docs/PRIOR-ART.md`](docs/PRIOR-ART.md). |
 
 ## Honest scope
 

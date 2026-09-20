@@ -105,7 +105,7 @@ Plus **iMessage** as the local-store tier — an app with no network API at all,
 
 ```bash
 pnpm install && pnpm build
-pnpm test                              # 44 tests, all green
+pnpm test                              # 154 tests, all green
 
 # Forge + certify a connector from a public API (two independent capture slices):
 node dist/cli/index.js forge devpost \
@@ -121,20 +121,38 @@ node dist/cli/index.js serve devpost                          # REST facade: GET
 Reproduce the evidence:
 
 ```bash
-pnpm tsx scripts/eval.ts            # the reliability table below, from live public APIs
-pnpm tsx scripts/selfheal-proof.ts  # drift → hot-swap → demote timeline
+pnpm tsx scripts/eval.ts                   # the reliability table below, from live public APIs
+pnpm tsx scripts/selfheal-proof.ts         # drift → hot-swap → demote timeline
+pnpm tsx scripts/replay-proof.ts           # certify against a live public API, then reproduce it
+                                           #   offline with global fetch disabled
+pnpm tsx scripts/drift-proof.ts            # one schema drift and one semantic false green:
+                                           #   detected, attributed, bundled, replayed offline
+pnpm tsx scripts/write-workflow-proof.ts   # a certified multi-step WRITE workflow, replayed
+                                           #   fixtures only — nothing real is mutated
 ```
+
+How the trust chain fits together: [`docs/TRUST-CHAIN.md`](docs/TRUST-CHAIN.md).
+What was borrowed from Sigstore/TUF, Schemathesis, Pact, OpenTelemetry, Cedar/OPA
+and WASI, and what is not: [`docs/PRIOR-ART.md`](docs/PRIOR-ART.md).
+What key lifecycle does **not** do: [`docs/KEY-LIFECYCLE-GAP.md`](docs/KEY-LIFECYCLE-GAP.md).
 
 ## Reliability, measured
 
 From `scripts/eval.ts` against live public APIs (no auth, no secrets). Derive and holdout are **independent** captures; the probe uses inputs never seen during either.
 
-| Connector | Certified | Holdout | Mutants caught | Unseen-input probe | Silent failures |
-| --- | --- | --- | --- | --- | --- |
-| chess.com | 1/1 | 8 | 40/40 | 3/4 | **0** |
-| devpost | 1/1 | 4 | 40/40 | 5/5 | **0** |
+The two false-green rates are reported **separately** and never summed. A connector that declares no semantic invariants has no semantic axis to report, which is a statement about coverage, not a clean bill of health.
 
-The chess.com miss is the point: at 8 holdout samples one field was over-constrained and an unseen player tripped it — and the runtime gate caught it **loudly** as a schema violation, never returning wrong data. Certification confidence scales with evidence; the false-green rate is how we measure it. Full discussion in [`docs/RELIABILITY-BRIEF.md`](docs/RELIABILITY-BRIEF.md).
+| Connector | Certified | Holdout | Mutants caught | Unseen-input probe | Invariants held | Schema false-green | Semantic false-green | Silent failures |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| chess.com | 1/1 | 8 | 40/40 | 4/4 | 1/1 | 0% (0/1) | 0% (0/1) | **0** |
+| devpost | 1/1 | 4 | 40/40 | 5/5 | 1/1 | 0% (0/1) | 0% (0/1) | **0** |
+
+**These numbers changed, and the reason is worth stating.** An earlier run of this table showed chess.com at 3/4 on the unseen-input probe and a 100% schema false-green rate, and devpost refusing to certify at all. Both were defects in schema inference, not in the services:
+
+- A capture of ten grandmasters all carry `title: "GM"`, and the inference asserted `enum: ["GM"]` from it — a closed vocabulary manufactured out of a single observed value. The first International Master then tripped the runtime gate. Inference now requires at least two values, each recurring, before it will claim a vocabulary is closed (`src/spec/infer.ts`).
+- Array element sampling took the first 50 elements in order. Since the repair loop re-infers over `[...derive, ...holdout]`, any derive capture whose arrays alone filled that budget truncated the holdout away entirely — so repair re-derived an identical schema, twice, and the operation was refused after two iterations that could never have succeeded. Sampling is now round-robin across response bodies.
+
+The runtime gate caught the false green **loudly** as a schema violation and never returned wrong data, which is the property that held throughout. But a gate that has to catch a failure its own inference created is not a good outcome, and the fix belonged in the inference. Regression tests: `test/infer.test.ts` I1-I5. Full discussion in [`docs/RELIABILITY-BRIEF.md`](docs/RELIABILITY-BRIEF.md).
 
 ## What works / what does not
 
@@ -142,11 +160,18 @@ The chess.com miss is the point: at 8 holdout samples one field was over-constra
 | --- | --- |
 | Derived-api + local-store tiers, end to end | **Works.** verified on live Chess.com/Devpost + SQLite. |
 | Independent-holdout certification + mutation suite | **Works.** 40/40 mutants caught on both live targets. |
-| Signed certificates, registry, MCP + REST surfaces | **Works.** |
+| Signed certificates anchored to the registry's own key, registry, MCP + REST surfaces | **Works.** |
 | Self-heal (drift → re-certify → hot-swap, or demote) | **Works.** `scripts/selfheal-proof.ts`. |
+| Declared semantic invariants (totals, cross-endpoint id agreement, vocabulary, ordering, pagination union, unit drift) | **Works.** six named classes; `test/semantic.test.ts`. |
+| Version compatibility classification + approval-gated promotion | **Works.** `scripts/`/`src/registry/compat.ts`. |
+| Signed replay bundles, reproduced offline with the network disabled | **Works.** `scripts/replay-proof.ts`, `scripts/drift-proof.ts`. |
+| Certified capability manifest enforced at egress (origins, methods, paths, secrets, files, writes, redirects) | **Works.** deny-by-default, read-only by default. |
+| Certified multi-step workflows: ordering, cursor advance, per-step auth, idempotency, compensation | **Works.** `scripts/write-workflow-proof.ts`. |
 | Browser-bridge tier (pure-UI apps) | **Not built.** documented T3 rung. |
-| Semantic correctness (right type, wrong value) | **Not covered by design.** the gate proves shape, not meaning. |
-| Write/mutating operations | **Read-first.** writes are never live-canaried yet. |
+| **General** semantic correctness | **Out of scope, by design.** only DECLARED invariants are certified; a connector declaring none reports `semanticVerdict: "not-declared"`, never a pass. |
+| Write/mutating operations against a live third party | **Never.** write workflows are certified against replayed fixtures only. |
+| Key rotation, revocation, effective-time verification | **Not implemented.** see [`docs/KEY-LIFECYCLE-GAP.md`](docs/KEY-LIFECYCLE-GAP.md). |
+| Code sandboxing (WASI or equivalent) | **Not applicable today.** no generated code executes; see [`docs/PRIOR-ART.md`](docs/PRIOR-ART.md). |
 
 ## Honest scope
 

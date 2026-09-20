@@ -9,7 +9,7 @@ import { deriveSpec } from "../src/spec/derive.js";
 import { certify } from "../src/certify/certify.js";
 import { Adapter } from "../src/codegen/adapter.js";
 import { ConnectorMonitor } from "../src/runtime/breaker.js";
-import type { Exchange } from "../src/core/types.js";
+import type { Exchange, SemanticInvariant } from "../src/core/types.js";
 
 interface Target {
   app: string;
@@ -18,6 +18,8 @@ interface Target {
   holdout: string[];
   probe: { op?: string; params: Record<string, string> }[]; // unseen inputs
   minReq: number;
+  /** Declared semantic invariants. Absent means this connector is certified shape-only. */
+  invariants?: SemanticInvariant[];
 }
 
 const TARGETS: Target[] = [
@@ -28,6 +30,16 @@ const TARGETS: Target[] = [
     holdout: ["chessbrah", "gmwso", "nihalsarin2004", "firouzja2003", "lyonbeast", "rpragchess", "polish_fighter3000", "chesswarrior7197"].map((p) => `https://api.chess.com/pub/player/${p}`),
     probe: ["levyrozman", "nemsko", "ghandeevam2003", "cutemouse83"].map((p) => ({ params: { player_id: p } })),
     minReq: 8,
+    invariants: [
+      {
+        id: "chesscom.player.status-vocabulary",
+        severity: "blocking",
+        kind: "enum-consistency",
+        field: "status",
+        allowed: ["basic", "premium", "staff", "mod", "closed", "closed:fair_play_violations", "closed:abuse", "closed:disabled"],
+        sources: [{ op: "get_pub_player_player_id", path: "$" }],
+      },
+    ],
   },
   {
     app: "devpost",
@@ -36,13 +48,24 @@ const TARGETS: Target[] = [
     holdout: [7, 8, 9, 10].map((n) => `https://devpost.com/api/hackathons?page=${n}`),
     probe: [11, 12, 13, 14, 15].map((n) => ({ params: { page: String(n) } })),
     minReq: 4,
+    invariants: [
+      {
+        id: "devpost.hackathons.pages-do-not-overlap",
+        severity: "blocking",
+        kind: "pagination-union",
+        op: "get_api_hackathons",
+        path: "hackathons",
+        idField: "id",
+      },
+    ],
   },
 ];
 
 async function run(t: Target) {
   const a = await captureUrls(t.derive, { delayMs: 250 });
   const b = await captureUrls(t.holdout, { delayMs: 250 });
-  const spec = deriveSpec(a, { app: t.app, tier: "derived-api", host: t.host, captureLabel: "eval", minSamplesForRequired: t.minReq });
+  const derived = deriveSpec(a, { app: t.app, tier: "derived-api", host: t.host, captureLabel: "eval", minSamplesForRequired: t.minReq });
+  const spec = t.invariants ? { ...derived, semanticInvariants: t.invariants } : derived;
   const { report, effectiveSpec } = await certify(spec, b, { deriveExchanges: a, minSamplesForRequired: t.minReq });
 
   const monitor = new ConnectorMonitor(new Set(report.certifiedOps));
@@ -55,6 +78,7 @@ async function run(t: Target) {
     if (r.ok) probeOk++;
   }
   const fg = monitor.falseGreenRate();
+  const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
   return {
     app: t.app,
     tier: effectiveSpec.tier,
@@ -65,7 +89,14 @@ async function run(t: Target) {
     holdout: b.length,
     mutants: `${report.mutation.caught}/${report.mutation.generated}`,
     probe: `${probeOk}/${t.probe.length}`,
-    falseGreen: `${(fg.rate * 100).toFixed(0)}% (${fg.falseGreen}/${fg.certified})`,
+    schemaVerdict: report.schemaVerdict,
+    semanticVerdict: report.semanticVerdict,
+    invariants: report.semantic.length ? `${report.semantic.filter((c) => c.pass).length}/${report.semantic.length}` : "none declared",
+    // The two false-green axes are reported SEPARATELY and never summed. A
+    // connector with no declared invariants has no semantic axis to report, which
+    // is a statement about coverage, not a clean bill of health.
+    schemaFalseGreen: `${pct(fg.rate)} (${fg.falseGreen}/${fg.certified})`,
+    semanticFalseGreen: report.semantic.length ? `${pct(fg.semanticRate)} (${fg.semanticFalseGreen}/${fg.certified})` : "n/a",
   };
 }
 
@@ -75,10 +106,12 @@ const main = async () => {
     process.stderr.write(`evaluating ${t.app}...\n`);
     rows.push(await run(t));
   }
-  console.log("\n| Connector | Tier | Ops | Certified | Refused | Uncovered | Holdout samples | Mutants caught | Unseen-input probe | False-green rate |");
-  console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+  console.log("\n| Connector | Tier | Ops | Certified | Refused | Uncovered | Holdout samples | Mutants caught | Unseen-input probe | Schema verdict | Semantic verdict | Invariants held | Schema false-green | Semantic false-green |");
+  console.log("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
   for (const r of rows) {
-    console.log(`| ${r.app} | ${r.tier} | ${r.ops} | ${r.certified} | ${r.refused} | ${r.uncovered} | ${r.holdout} | ${r.mutants} | ${r.probe} | ${r.falseGreen} |`);
+    console.log(
+      `| ${r.app} | ${r.tier} | ${r.ops} | ${r.certified} | ${r.refused} | ${r.uncovered} | ${r.holdout} | ${r.mutants} | ${r.probe} | ${r.schemaVerdict} | ${r.semanticVerdict} | ${r.invariants} | ${r.schemaFalseGreen} | ${r.semanticFalseGreen} |`,
+    );
   }
 };
 

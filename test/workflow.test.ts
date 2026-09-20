@@ -15,7 +15,7 @@ import { buildCaptureManifest } from "../src/capture/manifest.js";
 import { replayFetcher, invocationCount } from "../src/certify/replay.js";
 import { runWorkflow, resolvePath, isReadOnlyWorkflow } from "../src/certify/workflow.js";
 import { issueCertificate } from "../src/registry/certificate.js";
-import type { ConnectorSpec, Exchange, WorkflowSpec } from "../src/core/types.js";
+import type { ConnectorSpec, Exchange, JsonSchema, WorkflowSpec } from "../src/core/types.js";
 import { captureA, captureB } from "./fixtures.js";
 
 function harFile(obj: unknown): string {
@@ -63,7 +63,7 @@ async function certified(workflows: WorkflowSpec[] = [LIST_THEN_DETAIL]) {
 
 /** Synthetic spec with one non-idempotent write op, served entirely from replay. */
 function writeSpec(): { spec: ConnectorSpec; exchanges: Exchange[] } {
-  const ok = { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] } as const;
+  const ok: JsonSchema = { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] };
   const exchanges: Exchange[] = [
     {
       method: "POST", url: "https://api.x.test/api/charge", path: "/api/charge", query: {},

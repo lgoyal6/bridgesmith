@@ -10,6 +10,7 @@ import { inferSchema } from "./infer.js";
 import { templatePaths } from "./paths.js";
 import { REDACTED } from "../capture/redact.js";
 import { buildCaptureManifest } from "../capture/manifest.js";
+import { derivePermissions } from "../runtime/permissions.js";
 
 const MIN_SAMPLES_PER_OP = 1;
 
@@ -23,6 +24,14 @@ export interface DeriveOptions {
   minSamplesForRequired?: number;
   /** Overrides the driver recorded on the exchanges when building the manifest. */
   captureDriver?: string;
+  /**
+   * Permit mutating operations at runtime. Off by default: a derived connector
+   * is read-only until someone decides otherwise, and that decision is recorded
+   * in the certified permission manifest rather than assumed.
+   */
+  allowWrites?: boolean;
+  /** Filesystem paths the connector may read (local-store tier). */
+  filePaths?: string[];
 }
 
 export function deriveSpec(allExchanges: Exchange[], opts: DeriveOptions): ConnectorSpec {
@@ -105,7 +114,18 @@ export function deriveSpec(allExchanges: Exchange[], opts: DeriveOptions): Conne
       ...(opts.captureDriver !== undefined ? { driver: opts.captureDriver } : {}),
     }),
   };
-  return { ...spec, specHash: specHashOf(spec) };
+  // Least privilege, derived from what the spec actually contains. Every spec
+  // carries a capability budget for the same reason every spec carries
+  // provenance: a connector with no manifest would otherwise be a connector the
+  // runtime has no basis to refuse.
+  const withPerms: Omit<ConnectorSpec, "specHash"> = {
+    ...spec,
+    permissions: derivePermissions({ ...spec, specHash: "" } as ConnectorSpec, {
+      ...(opts.allowWrites !== undefined ? { allowWrites: opts.allowWrites } : {}),
+      ...(opts.filePaths !== undefined ? { filePaths: opts.filePaths } : {}),
+    }),
+  };
+  return { ...withPerms, specHash: specHashOf(withPerms) };
 }
 
 /**

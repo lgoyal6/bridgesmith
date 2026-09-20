@@ -6,7 +6,7 @@
  */
 import type { Exchange } from "../core/types.js";
 
-const SECRET_HEADERS = new Set([
+export const SECRET_HEADERS = new Set([
   "authorization",
   "cookie",
   "set-cookie",
@@ -17,9 +17,22 @@ const SECRET_HEADERS = new Set([
   "proxy-authorization",
 ]);
 
-const SECRET_QUERY_PARAMS = [/token/i, /key$/i, /^api_?key/i, /secret/i, /session/i, /auth/i];
+export const SECRET_QUERY_PARAMS = [/token/i, /key$/i, /^api_?key/i, /secret/i, /session/i, /auth/i];
 
 export const REDACTED = "BRIDGESMITH-REDACTED";
+
+/**
+ * The redaction policy as DATA, so a replay manifest can bind which rules were
+ * applied rather than asserting that "redaction happened". Bumping `version`
+ * when the rules change makes evidence captured under an older, weaker policy
+ * visibly older and weaker instead of silently equivalent.
+ */
+export const REDACTION_POLICY = {
+  version: 1,
+  headers: [...SECRET_HEADERS].sort(),
+  queryParamPatterns: SECRET_QUERY_PARAMS.map((r) => r.source),
+  replacement: REDACTED,
+} as const;
 
 export function redactExchange(ex: Exchange): Exchange {
   const requestHeaders: Record<string, string> = {};

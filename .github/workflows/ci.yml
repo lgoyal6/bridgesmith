@@ -18,4 +18,7 @@ jobs:
       # it and let build + test be the real gates.
       - run: pnpm install || true
       - run: pnpm build
+      # tsconfig.json only includes src, so a type-broken test or script would
+      # otherwise sit green behind a passing build.
+      - run: pnpm typecheck
       - run: pnpm test

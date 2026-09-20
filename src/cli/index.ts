@@ -11,6 +11,7 @@
  *   bridgesmith bundle <app> --out <dir>   write a signed, offline-replayable bundle
  *   bridgesmith replay <dir>               verify and replay a bundle with NO network
  *   bridgesmith diff <app> <fromV> <toV>   compatibility diff between two certified versions
+ *   bridgesmith emit-dotnet <app> --out <dir>  generate a .NET 8 client for certified ops
  */
 import { Command } from "commander";
 import { captureUrls } from "../capture/live.js";
@@ -24,6 +25,7 @@ import { buildReplayBundle, bundleAnchor, readBundle, runBundle, writeBundle } f
 import { diffSpecs, renderDiff } from "../registry/compat.js";
 import { loadTrustAnchor } from "../registry/certificate.js";
 import { readFileSync } from "node:fs";
+import { generateDotnetPackage, writeDotnetPackage } from "../codegen/dotnet.js";
 
 const REG_DIR = "connectors";
 
@@ -140,6 +142,24 @@ program
     for (const w of result.workflows) console.log(`  ${w.pass ? "ok " : "FAIL"} workflow ${w.id}${w.failure ? `: ${w.failure}` : ""}`);
     console.log(result.reproduced ? "REPRODUCED: every certified result replayed offline" : "NOT REPRODUCED");
     if (!result.reproduced) process.exit(1);
+  });
+
+program
+  .command("emit-dotnet")
+  .description("generate a typed .NET 8 package bound to a certified connector version")
+  .argument("<app>")
+  .requiredOption("--out <dir>", "parent directory for the generated package")
+  .option("--namespace <name>", "C# namespace override")
+  .action((app: string, opts: { out: string; namespace?: string }) => {
+    const latest = new Registry(REG_DIR).latest(app);
+    if (!latest) return console.error(`no valid connector for "${app}"`), process.exit(1);
+    const generated = generateDotnetPackage(
+      latest.spec,
+      latest.cert,
+      opts.namespace ? { namespace: opts.namespace } : {},
+    );
+    const dir = writeDotnetPackage(opts.out, generated);
+    console.log(`generated .NET 8 client for ${app} v${latest.cert.version} (${latest.cert.certifiedOps.length} certified ops) -> ${dir}`);
   });
 
 program

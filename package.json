@@ -12,6 +12,7 @@
     "dev": "tsx src/cli/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "proof:dotnet": "tsx scripts/dotnet-proof.ts",
     "demo": "bash scripts/demo.sh"
   },
   "engines": {

@@ -109,5 +109,6 @@ bearing rather than decorative.
 - **Live writes.** Write workflows are certified against replayed fixtures only.
   No third-party service is ever mutated to demonstrate correctness.
 - **Code confinement.** The permission layer mediates egress; it does not
-  sandbox executing code, because no generated code executes. See the header of
-  `src/runtime/permissions.ts`.
+  sandbox executing code. The trusted runtime executes no generated code.
+  Optional generated .NET clients run in the caller's process and can only call
+  the guarded REST facade. See the header of `src/runtime/permissions.ts`.

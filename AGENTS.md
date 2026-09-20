@@ -16,8 +16,8 @@ data it cannot certify.
 pnpm install --frozen-lockfile && pnpm build && pnpm typecheck && pnpm test
 ```
 
-Expected: TypeScript compiles with no errors and **154/154 vitest tests pass**
-across 13 files (`pipeline`, `localstore`, `selfheal`, `certificate`,
+Expected: TypeScript compiles with no errors and **157/157 vitest tests pass**
+across 14 files (`pipeline`, `localstore`, `selfheal`, `certificate`, `dotnet`,
 `provenance`, `workflow`, `workflow-state`, `semantic`, `infer`, `compat`,
 `bundle`, `permissions`, `observe`). CI runs this: `.github/workflows/ci.yml`.
 
@@ -41,6 +41,16 @@ python3 .agent-work/mutate.py compat   # or filter by label substring
 It disables one mechanism at a time and reports which tests go red. A mutation
 nothing catches is a control that proves nothing; the two that are currently
 uncaught are listed with the reason they are unreachable rather than hidden.
+
+Generated .NET 8 client proof (requires a .NET 8 SDK):
+
+```bash
+DOTNET=/path/to/dotnet pnpm proof:dotnet
+```
+
+This creates a client from an actual partial certification, compiles it without
+third-party packages, calls a certified operation through the keyed facade, and
+proves the uncovered operation is absent from C# and refused over REST.
 
 Runnable proofs (all read-only; nothing mutates a third-party service):
 
@@ -66,6 +76,7 @@ pnpm demo   # scripts/demo.sh — forges Chess.com + Devpost, serves REST, iMess
 | Certification runs against an INDEPENDENT holdout (capture B), not the derive capture | `src/certify/certify.ts` (`certify()` takes `holdout`; derive capture only used for repair re-inference) |
 | Mutation suite proves the gate rejects wrong data, not just confirms it | `src/certify/mutate.ts`, asserted in `test/pipeline.test.ts` |
 | Uncertified / uncovered operations are refused, never mounted | `src/certify/certify.ts` (`refusedOps`, `uncoveredOps`); surfaces expose only `cert.certifiedOps` in `src/surfaces/mcp.ts`, `src/surfaces/rest.ts` |
+| Typed .NET 8 packages expose only certified operations and bind every call to the exact app, certificate version, spec hash, and certified operation set | `src/codegen/dotnet.ts`; `test/dotnet.test.ts`; executable proof in `scripts/dotnet-proof.ts` |
 | ed25519-signed, tamper-evident birth certificates | `src/registry/certificate.ts` (`issueCertificate`, `verifyCertificate`); tamper test in `test/pipeline.test.ts` |
 | Certificates verify against the registry's OWN key (`.registry-key.pub`), never the key the certificate carries; no anchor => nothing is served | `src/registry/certificate.ts` (`loadTrustAnchor`, `verifyCertificate(cert, trustedPublicPem)`), `src/registry/registry.ts` (`load`); `test/certificate.test.ts` V1, V3, V8, V9 |
 | A mounted `spec.json` must hash to its certificate's `specHash`, so only certified operations can be mounted | `src/spec/derive.ts` (`specHashOf`), `src/registry/registry.ts` (`load`); `test/certificate.test.ts` V5, V6, V6b |
@@ -117,9 +128,10 @@ pnpm demo   # scripts/demo.sh — forges Chess.com + Devpost, serves REST, iMess
   compromised `.registry-key` invalidates every certificate it signed, with no
   partial remedy. `docs/KEY-LIFECYCLE-GAP.md` states exactly what would have to
   exist first and why a partial implementation would be worse than none.
-- **Sandboxing is capability mediation at egress, not code confinement.** No
-  generated code executes, so there is nothing to confine; a WASI-style sandbox
-  would isolate the wrong component. See the header of
+- **Sandboxing is capability mediation at egress, not code confinement.** The
+  trusted runtime executes no generated code. Optional generated .NET clients
+  run in the caller's process and can only reach the guarded facade; a WASI-style
+  sandbox inside Bridgesmith would isolate the wrong component. See the header of
   `src/runtime/permissions.ts` and `docs/PRIOR-ART.md`.
 - **OpenTelemetry**: the data model and OTLP/JSON wire format are implemented
   directly, not via `@opentelemetry/*`. No context propagation across processes,

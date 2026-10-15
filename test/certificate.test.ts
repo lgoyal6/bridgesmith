@@ -1,10 +1,8 @@
 /**
- * Adversarial certificate suite: the birth certificate is the durable artifact
- * the whole thesis rests on, so it has to resist FORGERY (a certificate signed
- * by a key the registry never issued), not only tampering with a genuine one.
- *
- * Every vector below is a way an attacker with write access to connectors/
- * could try to get an operation mounted without passing certification.
+ * Checks certificate mounting against real held-out connector certification.
+ * Uses Registry and certificate.ts with private trust roots and fixtures.
+ * Rejects forgery, stale certification, rotation replay and corrupt state.
+ * Valid controls confirm that approved connectors still mount.
  */
 import { describe, it, expect } from "vitest";
 import { generateKeyPairSync, sign as edSign, createPrivateKey } from "node:crypto";
@@ -15,7 +13,7 @@ import { loadHar } from "../src/capture/har.js";
 import { deriveSpec } from "../src/spec/derive.js";
 import { certify } from "../src/certify/certify.js";
 import { canonicalJson } from "../src/core/canon.js";
-import { ensureRegistryKey, issueCertificate, verifyCertificate } from "../src/registry/certificate.js";
+import { ensureRegistryKey, signPayload, issueCertificate, verifyCertificate, rotateRegistryKey, revokeRegistryKey, verifyRegistryKeyring } from "../src/registry/certificate.js";
 import { Registry } from "../src/registry/registry.js";
 import type { BirthCertificate, CertificationReport, ConnectorSpec } from "../src/core/types.js";
 import { captureA, captureB } from "./fixtures.js";
@@ -45,6 +43,12 @@ async function legitRegistry(): Promise<{
   reg.store(effectiveSpec, report, cert);
   const trusted = ensureRegistryKey(dir).publicPem;
   return { dir, reg, spec: effectiveSpec, report, cert, trusted };
+}
+
+async function recertify(spec: ConnectorSpec): Promise<{ spec: ConnectorSpec; report: CertificationReport }> {
+  const derive = loadHar(harFile(captureA()));
+  const result = await certify(spec, loadHar(harFile(captureB())), { deriveExchanges: derive });
+  return { spec: result.effectiveSpec, report: result.report };
 }
 
 /** Sign an arbitrary certificate body with an ATTACKER's fresh ed25519 key. */
@@ -79,6 +83,106 @@ describe("certificate: genuine certificates still work", () => {
     const cert2 = issueCertificate(spec, report, 2, dir);
     reg.store(spec, report, cert2);
     expect(reg.latest("events")?.cert.version).toBe(2);
+  });
+
+  it("V0c rotation invalidates old-key certificates and freshly certified versions mount", async () => {
+    const { dir, reg, spec, report, cert } = await legitRegistry();
+    const pinnedRoot = readFileSync(join(dir, ".registry-key-root.pub"), "utf8");
+    const rotated = rotateRegistryKey(dir, "scheduled rotation");
+    expect(verifyRegistryKeyring(dir, pinnedRoot, rotated.head)).not.toBeNull();
+    expect(verifyCertificate(cert, ensureRegistryKey(dir).publicPem)).toBe(false);
+    expect(reg.latest("events")).toBeNull();
+    expect(() => issueCertificate(spec, report, 2, dir)).toThrow(/certification must start after activation/);
+    const freshEvidence = await recertify(spec);
+    const fresh = issueCertificate(freshEvidence.spec, freshEvidence.report, 2, dir);
+    reg.store(freshEvidence.spec, freshEvidence.report, fresh);
+    expect(reg.latest("events")?.cert.version).toBe(2);
+    expect(reg.at("events", 1)).toBeNull();
+  });
+
+  it("V0d revocation immediately invalidates certificates and a later key requires fresh certification", async () => {
+    const { dir, reg, spec, report, cert } = await legitRegistry();
+    const oldKey = ensureRegistryKey(dir).publicPem;
+    const revoked = revokeRegistryKey(dir, "suspected compromise");
+    expect(verifyRegistryKeyring(dir, readFileSync(join(dir, ".registry-key-root.pub"), "utf8"), revoked.head)).toBeNull();
+    expect(verifyCertificate(cert, oldKey)).toBe(true);
+    expect(reg.latest("events")).toBeNull();
+    rotateRegistryKey(dir, "recovery after revocation");
+    expect(() => issueCertificate(spec, report, 2, dir)).toThrow(/certification must start after activation/);
+    const freshEvidence = await recertify(spec);
+    const fresh = issueCertificate(freshEvidence.spec, freshEvidence.report, 2, dir);
+    reg.store(freshEvidence.spec, freshEvidence.report, fresh);
+    expect(reg.latest("events")?.cert.version).toBe(2);
+    expect(reg.at("events", 1)).toBeNull();
+  });
+
+  it("V0e interrupted compatibility-mirror updates cannot split active signing and verification state", async () => {
+    const { dir, reg, spec, report } = await legitRegistry();
+    const pinnedRoot = readFileSync(join(dir, ".registry-key-root.pub"), "utf8");
+    rotateRegistryKey(dir, "crash consistency test");
+    const committedState = readFileSync(join(dir, ".registry-state.json"), "utf8");
+    // Model termination after the atomic state commit but before all legacy mirrors refresh.
+    writeFileSync(join(dir, ".registry-key.pub"), "stale public key");
+    writeFileSync(join(dir, ".registry-key"), "stale private key");
+    writeFileSync(join(dir, ".registry-keyring.json"), "stale keyring");
+    const freshEvidence = await recertify(spec);
+    const fresh = issueCertificate(freshEvidence.spec, freshEvidence.report, 2, dir);
+    reg.store(freshEvidence.spec, freshEvidence.report, fresh);
+    expect(verifyRegistryKeyring(dir, pinnedRoot)).toBe(ensureRegistryKey(dir).publicPem);
+    expect(reg.latest("events")?.cert.version).toBe(2);
+    writeFileSync(join(dir, ".registry-state.json"), "{");
+    expect(verifyRegistryKeyring(dir, pinnedRoot)).toBeNull();
+    expect(reg.latest("events")).toBeNull();
+    expect(() => issueCertificate(freshEvidence.spec, freshEvidence.report, 3, dir)).toThrow(/lifecycle state is corrupt/);
+    writeFileSync(join(dir, ".registry-state.json"), committedState);
+  });
+
+  it("V0f lifecycle matrix isolates two apps and versions across two trust roots", async () => {
+    const registries = [mkdtempSync(join(tmpdir(), "reg-matrix-a-")), mkdtempSync(join(tmpdir(), "reg-matrix-b-"))];
+    for (const dir of registries) new Registry(dir);
+    const appArtifacts: { app: string; spec: ConnectorSpec; report: CertificationReport }[] = [];
+    for (const app of ["events", "calendar"]) {
+      const derive = loadHar(harFile(captureA()));
+      const spec = deriveSpec(derive, { app, captureLabel: "A", host: "example-events.com" });
+      const holdout = loadHar(harFile(captureB()));
+      const result = await certify(spec, holdout, { deriveExchanges: derive });
+      appArtifacts.push({ app, spec: result.effectiveSpec, report: result.report });
+    }
+    for (const dir of registries) {
+      const registry = new Registry(dir);
+      for (const artifact of appArtifacts) {
+        const cert = issueCertificate(artifact.spec, artifact.report, 1, dir);
+        registry.store(artifact.spec, artifact.report, cert);
+        expect(registry.latest(artifact.app)?.cert.version).toBe(1);
+      }
+      rotateRegistryKey(dir, "matrix rotation");
+      for (const artifact of appArtifacts) expect(registry.latest(artifact.app)).toBeNull();
+      for (const artifact of appArtifacts) {
+        expect(() => issueCertificate(artifact.spec, artifact.report, 2, dir)).toThrow(/certification must start after activation/);
+        const freshEvidence = await recertify(artifact.spec);
+        const cert = issueCertificate(freshEvidence.spec, freshEvidence.report, 2, dir);
+        registry.store(freshEvidence.spec, freshEvidence.report, cert);
+        expect(registry.latest(artifact.app)?.cert.version).toBe(2);
+        expect(registry.at(artifact.app, 1)).toBeNull();
+      }
+    }
+    const foreign = new Registry(registries[1]!);
+    expect(foreign.latest("events")?.cert.version).toBe(2);
+    expect(verifyCertificate(foreign.at("events", 2)!.cert, ensureRegistryKey(registries[0]!).publicPem)).toBe(false);
+  });
+});
+
+describe("certificate: lifecycle mutations serialize issuance", () => {
+  it("refuses issuance while another lifecycle writer holds the lock", async () => {
+    const { dir, reg, spec, report } = await legitRegistry();
+    mkdirSync(join(dir, ".registry-keyring.lock"));
+    try {
+      expect(() => issueCertificate(spec, report, 2, dir)).toThrow(/EEXIST/);
+      expect(reg.latest("events")?.cert.version).toBe(1);
+    } finally {
+      rmSync(join(dir, ".registry-keyring.lock"), { recursive: true });
+    }
+    expect(issueCertificate(spec, report, 2, dir).version).toBe(2);
   });
 });
 
@@ -175,6 +279,7 @@ describe("certificate: forgery and substitution are refused", () => {
     const { dir, reg, cert } = await legitRegistry();
     rmSync(join(dir, ".registry-key.pub"));
     rmSync(join(dir, ".registry-key"));
+    rmSync(join(dir, ".registry-state.json"));
     expect(verifyCertificate(cert, cert.publicKey)).toBe(true); // self-consistent...
     expect(reg.latest("events")).toBeNull(); // ...but not trusted
     expect(reg.list().every((r) => r.valid === false)).toBe(true);
@@ -208,5 +313,23 @@ describe("certificate: forgery and substitution are refused", () => {
     cpSync(join(theirs.dir, "events"), join(mine.dir, "events"), { recursive: true });
     expect(JSON.parse(readFileSync(join(mine.dir, "events/v1/certificate.json"), "utf8")).version).toBe(1);
     expect(mine.reg.latest("events")).toBeNull();
+  });
+});
+
+
+describe("exported key initialization lock", () => {
+  it("refuses low-level initialization and payload signing while another writer holds the lock", () => {
+    const dir = mkdtempSync(join(tmpdir(), "reg-direct-lock-"));
+    try {
+      mkdirSync(join(dir, ".registry-keyring.lock"));
+      expect(() => ensureRegistryKey(dir)).toThrow(/EEXIST/);
+      expect(() => signPayload(dir, { event: "test" })).toThrow(/EEXIST/);
+      rmSync(join(dir, ".registry-keyring.lock"), { recursive: true });
+      const pair = ensureRegistryKey(dir);
+      expect(pair.publicPem).toContain("BEGIN PUBLIC KEY");
+      expect(signPayload(dir, { event: "test" }).signature).toBeTruthy();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

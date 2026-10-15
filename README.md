@@ -8,7 +8,7 @@
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-5FA04E?logo=nodedotjs&logoColor=white)](package.json)
 [![.NET 8](https://img.shields.io/badge/generated_clients-.NET_8-512BD4?logo=dotnet&logoColor=white)](src/codegen/dotnet.ts)
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
-[![Tests](https://img.shields.io/badge/tests-157%2F157-35d07f)](test)
+[![Tests](https://img.shields.io/badge/tests-164%2F164-35d07f)](test)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 <a href="https://www.youtube.com/watch?v=HA4aw3cb8B4"><img src="https://img.youtube.com/vi/HA4aw3cb8B4/maxresdefault.jpg" alt="Watch the 2-minute Bridgesmith demo" width="640"></a>
@@ -106,7 +106,7 @@ Plus **iMessage** as the local-store tier — an app with no network API at all,
 
 ```bash
 pnpm install && pnpm build
-pnpm test                              # 157 tests, all green
+pnpm test                              # 164 tests, all green
 
 # Forge + certify a connector from a public API (two independent capture slices):
 node dist/cli/index.js forge devpost \
@@ -137,7 +137,7 @@ DOTNET=/path/to/dotnet pnpm proof:dotnet   # generate + compile + call + prove r
 How the trust chain fits together: [`docs/TRUST-CHAIN.md`](docs/TRUST-CHAIN.md).
 What was borrowed from Sigstore/TUF, Schemathesis, Pact, OpenTelemetry, Cedar/OPA
 and WASI, and what is not: [`docs/PRIOR-ART.md`](docs/PRIOR-ART.md).
-What key lifecycle does **not** do: [`docs/KEY-LIFECYCLE-GAP.md`](docs/KEY-LIFECYCLE-GAP.md).
+Key lifecycle guarantees and remaining limits: [`docs/KEY-LIFECYCLE-GAP.md`](docs/KEY-LIFECYCLE-GAP.md).
 
 ## Reliability, measured
 
@@ -174,7 +174,7 @@ The runtime gate caught the false green **loudly** as a schema violation and nev
 | Browser-bridge tier (pure-UI apps) | **Not built.** documented T3 rung. |
 | **General** semantic correctness | **Out of scope, by design.** only DECLARED invariants are certified; a connector declaring none reports `semanticVerdict: "not-declared"`, never a pass. |
 | Write/mutating operations against a live third party | **Never.** write workflows are certified against replayed fixtures only. |
-| Key rotation, revocation, effective-time verification | **Not implemented.** see [`docs/KEY-LIFECYCLE-GAP.md`](docs/KEY-LIFECYCLE-GAP.md). |
+| Key rotation and revocation | **Works locally.** Old-key certificates stop mounting; fresh certification is required. Rollback detection needs an externally pinned root and expected keyring head. Trusted historical-time verification remains unsupported. See [`docs/KEY-LIFECYCLE-GAP.md`](docs/KEY-LIFECYCLE-GAP.md). |
 | Code sandboxing (WASI or equivalent) | **Not applicable to the trusted runtime today.** generated .NET clients run in the caller's process and only invoke the guarded facade; no generated code executes inside Bridgesmith. See [`docs/PRIOR-ART.md`](docs/PRIOR-ART.md). |
 
 ## Honest scope

@@ -350,6 +350,8 @@ export interface BirthCertificate {
   /** ed25519 signature (base64) over the canonicalized certificate sans signature. */
   signature: string;
   publicKey: string;
+  /** Stable signer identity, resolved through the registry keyring at mount time. */
+  keyId?: string;
 }
 
 export interface TraceEvent {

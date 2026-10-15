@@ -313,9 +313,13 @@ describe("the registry will not let a connector self-assert what it passed", () 
     expect(reg.latest("events")).toBeNull();
 
     // control: the same spec with a certificate that certifies both IS served
-    const honest = issueCertificate(two.effectiveSpec, two.report, 1, dir);
-    reg.store(two.effectiveSpec, two.report, honest);
-    expect(reg.latest("events")?.cert.version).toBe(1);
+    // A promoted version is immutable; the valid control uses a fresh registry
+    // rather than replacing the invalid candidate at the same version path.
+    const controlDir = mkdtempSync(join(tmpdir(), "reg-control-"));
+    const control = new Registry(controlDir);
+    const honest = issueCertificate(two.effectiveSpec, two.report, 1, controlDir);
+    control.store(two.effectiveSpec, two.report, honest);
+    expect(control.latest("events")?.cert.version).toBe(1);
   });
 });
 

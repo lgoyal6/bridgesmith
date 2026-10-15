@@ -29,9 +29,9 @@
  * Widening a connector's permissions is refused by check 3 (test N18).
  * Anything else is skipped, and an older version that does pass is served instead.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import type { BirthCertificate, CertificationReport, ConnectorSpec } from "../core/types.js";
-import { adapterHashOf, issueCertificate, loadTrustAnchor, verifyCertificate } from "./certificate.js";
+import { adapterHashOf, ensureKeyring, issueCertificate, loadTrustAnchor, verifyCertificate, verifyRegistryKeyring } from "./certificate.js";
 import { diffSpecs, type SpecDiff } from "./compat.js";
 import { specHashOf } from "../spec/derive.js";
 import { manifestHash } from "../capture/manifest.js";
@@ -39,6 +39,7 @@ import { manifestHash } from "../capture/manifest.js";
 export class Registry {
   constructor(private readonly root: string) {
     mkdirSync(root, { recursive: true });
+    ensureKeyring(root);
   }
 
   nextVersion(app: string): number {
@@ -51,12 +52,22 @@ export class Registry {
   }
 
   store(spec: ConnectorSpec, report: CertificationReport, cert: BirthCertificate): string {
-    const dir = `${this.root}/${spec.app}/v${cert.version}`;
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(`${dir}/spec.json`, JSON.stringify(spec, null, 2));
-    writeFileSync(`${dir}/report.json`, JSON.stringify(report, null, 2));
-    writeFileSync(`${dir}/certificate.json`, JSON.stringify(cert, null, 2));
-    return dir;
+    const appDir = `${this.root}/${spec.app}`;
+    const dir = `${appDir}/v${cert.version}`;
+    mkdirSync(appDir, { recursive: true });
+    const staging = mkdtempSync(`${appDir}/.v${cert.version}.staging-`);
+    try {
+      writeFileSync(`${staging}/spec.json`, JSON.stringify(spec, null, 2));
+      writeFileSync(`${staging}/report.json`, JSON.stringify(report, null, 2));
+      writeFileSync(`${staging}/certificate.json`, JSON.stringify(cert, null, 2));
+      // Publish the complete immutable version in one same-filesystem rename.
+      // Concurrent writers may race, but only one can publish a populated dir.
+      renameSync(staging, dir);
+      return dir;
+    } catch (error) {
+      rmSync(staging, { recursive: true, force: true });
+      throw error;
+    }
   }
 
   /** Latest version whose certificate verifies under the trust anchor and whose spec is bound to it. */
@@ -169,6 +180,8 @@ export class Registry {
     const anchor = loadTrustAnchor(this.root);
     if (!anchor) return null;
     try {
+      const rootKey = readFileSync(`${this.root}/.registry-key-root.pub`, "utf8");
+      if (verifyRegistryKeyring(this.root, rootKey) !== anchor) return null;
       const cert: BirthCertificate = JSON.parse(readFileSync(`${vdir}/certificate.json`, "utf8"));
       // `cert.app !== app` is defense-in-depth only: specHash covers the spec's app,
       // so check 3 below already refuses any cross-app replay (see test V5).

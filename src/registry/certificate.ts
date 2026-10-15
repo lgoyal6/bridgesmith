@@ -1,13 +1,8 @@
 /**
- * Birth certificates: signed, verifiable proof that a connector version passed
- * certification. Signed with an ed25519 key generated per-registry (kept in
- * connectors/.registry-key, gitignored).
- *
- * Verification is anchored: a certificate is valid only if it verifies under the
- * registry's OWN public key (`.registry-key.pub`). The `publicKey` field inside
- * the certificate is informational and must match that anchor; it is never used
- * as the verification key on its own, because anything the certificate carries
- * about itself is under the forger's control.
+ * Signs connector certificates and verifies the registry's active trust key.
+ * Registry.load uses this module to refuse retired keys and invalid state.
+ * One lifecycle snapshot keeps the signing key and signed history together.
+ * A shared mutation lock prevents initialization, issuance and rotation races.
  */
 import {
   generateKeyPairSync,
@@ -17,7 +12,7 @@ import {
   createPublicKey,
   timingSafeEqual,
 } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { BirthCertificate, CertificationReport, ConnectorSpec } from "../core/types.js";
 import { canonicalJson, sha256 } from "../core/canon.js";
@@ -28,9 +23,30 @@ import { permissionsHashOf } from "../runtime/permissions.js";
 function keyPaths(dir: string) {
   return { priv: `${dir}/.registry-key`, pub: `${dir}/.registry-key.pub` };
 }
+interface RegistryKeyState { privatePem: string; publicPem: string; ring?: Keyring }
+function readKeyState(dir: string): RegistryKeyState | null {
+  const path = `${dir}/.registry-state.json`;
+  if (!existsSync(path)) return null;
+  try {
+    const state = JSON.parse(readFileSync(path, "utf8")) as RegistryKeyState;
+    if (typeof state.privatePem !== "string" || typeof state.publicPem !== "string" || (state.ring !== undefined && typeof state.ring !== "object")) {
+      throw new Error("invalid lifecycle state schema");
+    }
+    return state;
+  } catch (error) {
+    throw new Error("registry lifecycle state is corrupt; refusing legacy key mirrors", { cause: error });
+  }
+}
 
 export function ensureRegistryKey(dir: string): { privatePem: string; publicPem: string } {
+  return withKeyringLock(dir, () => ensureRegistryKeyLocked(dir));
+}
+
+// Lifecycle writers already hold the lock and must not acquire it twice.
+function ensureRegistryKeyLocked(dir: string): { privatePem: string; publicPem: string } {
   const { priv, pub } = keyPaths(dir);
+  const state = readKeyState(dir);
+  if (state) return { privatePem: state.privatePem, publicPem: state.publicPem };
   if (existsSync(priv) && existsSync(pub)) {
     return { privatePem: readFileSync(priv, "utf8"), publicPem: readFileSync(pub, "utf8") };
   }
@@ -49,7 +65,153 @@ export function ensureRegistryKey(dir: string): { privatePem: string; publicPem:
  */
 export function loadTrustAnchor(dir: string): string | null {
   const { pub } = keyPaths(dir);
+  try {
+    const state = readKeyState(dir);
+    if (state) return state.publicPem;
+  } catch { return null; }
   return existsSync(pub) ? readFileSync(pub, "utf8") : null;
+}
+
+export interface KeyringRecord {
+  keyId: string;
+  publicKey: string;
+  status: "active" | "revoked";
+  changedAt: string;
+  reason: string;
+  signerKeyId: string | null;
+  signature: string;
+}
+export interface Keyring { version: 1; sequence: number; previousHead: string | null; records: KeyringRecord[]; head: string }
+
+function keyringBody(ring: Omit<Keyring, "head">): string { return canonicalJson(ring); }
+function keyringHead(ring: Omit<Keyring, "head">): string { return sha256(keyringBody(ring)); }
+function atomicJson(path: string, value: unknown): void {
+  const tmp = `${path}.tmp-${process.pid}-${Date.now()}`;
+  writeFileSync(tmp, JSON.stringify(value, null, 2), { mode: 0o600 });
+  try { renameSync(tmp, path); } catch (e) { rmSync(tmp, { force: true }); throw e; }
+}
+function atomicText(path: string, value: string): void {
+  const tmp = `${path}.tmp-${process.pid}-${Date.now()}`;
+  writeFileSync(tmp, value, { mode: 0o600 });
+  try { renameSync(tmp, path); } catch (e) { rmSync(tmp, { force: true }); throw e; }
+}
+function signRecord(record: Omit<KeyringRecord, "signature">, privatePem: string): KeyringRecord {
+  return { ...record, signature: edSign(null, Buffer.from(canonicalJson(record)), createPrivateKey(privatePem)).toString("base64") };
+}
+function verifyRecord(record: KeyringRecord, signer: string): boolean {
+  const { signature, ...body } = record;
+  return edVerify(null, Buffer.from(canonicalJson(body)), createPublicKey(signer), Buffer.from(signature, "base64"));
+}
+
+/** Validate the entire chain against a caller-pinned root and optional out-of-band head. */
+export function verifyKeyring(ring: Keyring, pinnedRoot: string, expectedHead?: string): string | null {
+  try {
+    const { head, ...body } = ring;
+    if (ring.version !== 1 || head !== keyringHead(body) || (expectedHead && expectedHead !== head)) return null;
+    let signer = pinnedRoot;
+    let priorKey = keyId(pinnedRoot);
+    if (!Number.isSafeInteger(ring.sequence) || ring.sequence < 0 || ring.sequence > ring.records.length) return null;
+    for (const [i, rec] of ring.records.entries()) {
+      if (rec.signerKeyId !== (i === 0 ? null : priorKey) || !rec.keyId || keyId(rec.publicKey) !== rec.keyId) return null;
+      if (i === 0) {
+        if (!sameKey(rec.publicKey, pinnedRoot) || rec.status !== "active" || rec.signature !== "root") return null;
+      } else if (!verifyRecord(rec, signer)) return null;
+      signer = rec.publicKey;
+      priorKey = rec.keyId;
+    }
+    const active = ring.records.at(-1)?.status === "active" ? ring.records.at(-1) : undefined;
+    return active?.publicKey ?? null;
+  } catch { return null; }
+}
+
+function readKeyring(dir: string): Keyring | null {
+  const state = readKeyState(dir);
+  if (state?.ring) return state.ring;
+  if (existsSync(`${dir}/.registry-state.json`)) return null;
+  try { return JSON.parse(readFileSync(`${dir}/.registry-keyring.json`, "utf8")) as Keyring; } catch { return null; }
+}
+
+function persistKeyState(dir: string, state: RegistryKeyState): void {
+  atomicJson(`${dir}/.registry-state.json`, state);
+  // Compatibility mirrors are deliberately non-authoritative. A crash during
+  // mirror refresh cannot split signing and verification state.
+  if (state.ring) atomicJson(`${dir}/.registry-keyring.json`, state.ring);
+  atomicText(`${dir}/.registry-key`, state.privatePem);
+  atomicText(`${dir}/.registry-key.pub`, state.publicPem);
+}
+
+/** Verify the on-disk chain against a separately pinned root and optional out-of-band head. */
+export function verifyRegistryKeyring(dir: string, pinnedRoot: string, expectedHead?: string): string | null {
+  try {
+    const ring = readKeyring(dir);
+    return ring ? verifyKeyring(ring, pinnedRoot, expectedHead) : null;
+  } catch { return null; }
+}
+
+/** Initialize an anchored keyring for existing single-key registries. */
+export function ensureKeyring(dir: string): Keyring {
+  const existing = readKeyring(dir);
+  if (existing) return existing;
+  return withKeyringLock(dir, () => ensureKeyringLocked(dir));
+}
+
+// Recheck after taking the lock so a completed initializer is never replaced.
+function ensureKeyringLocked(dir: string): Keyring {
+  const existing = readKeyring(dir);
+  if (existing) return existing;
+  const { privatePem, publicPem } = ensureRegistryKeyLocked(dir);
+  const root = { version: 1 as const, sequence: 0, previousHead: null, records: [{ keyId: keyId(publicPem), publicKey: publicPem, status: "active" as const, changedAt: new Date().toISOString(), reason: "initial trust root", signerKeyId: null, signature: "root" }] };
+  const ring = { ...root, head: keyringHead(root) };
+  atomicText(`${dir}/.registry-key-root.pub`, publicPem);
+  persistKeyState(dir, { privatePem, publicPem, ring });
+  void privatePem;
+  return ring;
+}
+
+function withKeyringLock<T>(dir: string, fn: () => T): T {
+  mkdirSync(dir, { recursive: true });
+  const lock = `${dir}/.registry-keyring.lock`;
+  mkdirSync(lock);
+  try { return fn(); } finally { rmSync(lock, { recursive: true, force: true }); }
+}
+
+/** Rotate to a new key. Old certificates cease to mount because only the latest active key is accepted. */
+export function rotateRegistryKey(dir: string, reason = "key rotation"): Keyring {
+  return withKeyringLock(dir, () => rotateRegistryKeyLocked(dir, reason));
+}
+function rotateRegistryKeyLocked(dir: string, reason: string): Keyring {
+  const ring = ensureKeyringLocked(dir);
+  const { privatePem } = ensureRegistryKeyLocked(dir);
+  const previous = ring.records.at(-1);
+  if (!previous) throw new Error("keyring has no active key");
+  if (previous.status === "active") {
+    const retired = signRecord({ keyId: previous.keyId, publicKey: previous.publicKey, status: "revoked", changedAt: new Date().toISOString(), reason, signerKeyId: previous.keyId }, privatePem);
+    ring.records = [...ring.records, retired];
+  }
+  const generated = generateKeyPairSync("ed25519");
+  const publicPem = generated.publicKey.export({ type: "spki", format: "pem" }).toString();
+  const next = signRecord({ keyId: keyId(publicPem), publicKey: publicPem, status: "active", changedAt: new Date().toISOString(), reason, signerKeyId: previous.keyId }, privatePem);
+  const body = { version: 1 as const, sequence: ring.sequence + 1, previousHead: ring.head, records: [...ring.records, next] };
+  const out = { ...body, head: keyringHead(body) };
+  persistKeyState(dir, { privatePem: generated.privateKey.export({ type: "pkcs8", format: "pem" }).toString(), publicPem, ring: out });
+  return out;
+}
+
+/** Revoke the active key. No certificate remains mountable until a fresh key is rotated in. */
+export function revokeRegistryKey(dir: string, reason: string): Keyring {
+  return withKeyringLock(dir, () => revokeRegistryKeyLocked(dir, reason));
+}
+function revokeRegistryKeyLocked(dir: string, reason: string): Keyring {
+  if (!reason.trim()) throw new Error("revocation reason is required");
+  const ring = ensureKeyringLocked(dir);
+  const active = ring.records.at(-1);
+  if (!active || active.status !== "active") throw new Error("keyring has no active key");
+  const { privatePem } = ensureRegistryKeyLocked(dir);
+  const revoked = signRecord({ keyId: active.keyId, publicKey: active.publicKey, status: "revoked", changedAt: new Date().toISOString(), reason, signerKeyId: active.keyId }, privatePem);
+  const body = { version: 1 as const, sequence: ring.sequence + 1, previousHead: ring.head, records: [...ring.records, revoked] };
+  const out = { ...body, head: keyringHead(body) };
+  persistKeyState(dir, { ...ensureRegistryKeyLocked(dir), ring: out });
+  return out;
 }
 
 /**
@@ -119,7 +281,27 @@ export function issueCertificate(
   registryDir: string,
   lineage: Lineage = { predecessor: null, compat: "initial" },
 ): BirthCertificate {
-  const { privatePem, publicPem } = ensureRegistryKey(registryDir);
+  // Validation and signing must use the same key generation across processes.
+  return withKeyringLock(registryDir, () => issueCertificateLocked(spec, report, version, registryDir, lineage));
+}
+
+function issueCertificateLocked(
+  spec: ConnectorSpec,
+  report: CertificationReport,
+  version: number,
+  registryDir: string,
+  lineage: Lineage,
+): BirthCertificate {
+  if (report.app !== spec.app) throw new Error("certification report does not match the connector app");
+  const ring = ensureKeyringLocked(registryDir);
+  const activeRecord = ring.records.at(-1);
+  if (!activeRecord || activeRecord.status !== "active") throw new Error("registry has no active signing key");
+  const certifiedAt = Date.parse(report.startedAt);
+  const keyActiveAt = Date.parse(activeRecord.changedAt);
+  if (!Number.isFinite(certifiedAt) || !Number.isFinite(keyActiveAt) || (ring.sequence > 0 && certifiedAt < keyActiveAt)) {
+    throw new Error("certification must start after activation of the active registry key");
+  }
+  const { privatePem, publicPem } = ensureRegistryKeyLocked(registryDir);
   const unsigned: Omit<BirthCertificate, "signature"> = {
     app: spec.app,
     version,
@@ -140,6 +322,7 @@ export function issueCertificate(
     holdoutManifestHash: manifestHash(report.holdout),
     issuedAt: new Date().toISOString(),
     publicKey: publicPem,
+    keyId: keyId(publicPem),
   };
   const sig = edSign(null, Buffer.from(signable(unsigned)), createPrivateKey(privatePem));
   return { ...unsigned, signature: sig.toString("base64") };

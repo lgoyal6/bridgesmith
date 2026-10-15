@@ -1,82 +1,99 @@
-# Key lifecycle: what exists, what does not, and why nothing was added
+# Key lifecycle: signed key history and recovery limits
 
-**Status: not implemented, deliberately.** This document is the deliverable.
+**Status: local lifecycle implemented, external rollback protection pending.**
 
-Bridgesmith's whole trust story rests on one signing key. That makes key
-lifecycle the most obvious next feature and the easiest one to get wrong in a
-way that is worse than absence: a rotation endpoint that leaves every previously
-issued certificate trusted forever looks like a security feature and is a
-liability. This file records exactly where the line is.
+Previously, Bridgesmith's trust story rested on one signing key. The local
+rotation and revocation behavior is now implemented; this file records its
+guarantees and the limits that remain.
 
 ## What the registry persists today
 
 | Thing | Where | Status |
 | --- | --- | --- |
-| One ed25519 key pair per registry | `connectors/.registry-key{,.pub}` (`src/registry/certificate.ts`) | present |
-| Trust anchor = the registry's own public key | `loadTrustAnchor()`; absent anchor fails closed | present |
+| Atomic current private/public key and keyring snapshot | `.registry-state.json` (mode 0600) | authoritative |
+| Compatibility mirrors | `.registry-key{,.pub}`, `.registry-keyring.json` | non-authoritative |
+| Initial root | `.registry-key-root.pub` | pinned by offline verifier |
 | Stable short key identity | `keyId()` = first 16 bytes of SHA-256 over SPKI DER | present |
 | Key identity named by an artifact | replay manifests carry `keyId` and verify it (`src/replay/bundle.ts`) | present |
 | Certificate lineage | signed `predecessor` + `compat` on every certificate | present |
 | Issue time on a certificate | signed `issuedAt` | present |
 
-## What is missing, and what each one actually requires
+## Original gaps and dispositions
 
-1. **A keyring.** There is one key pair at one path. Rotation needs a set of key
-   identities with per-key metadata, and `ensureRegistryKey()` currently
-   generates-or-reads a single pair. Rotating today means overwriting the file,
-   which silently invalidates every certificate ever issued — with no way to tell
-   that apart from a forgery.
+1. **A keyring.** Implemented as a predecessor-signed sequence with stable key
+   identities and status metadata.
 
 2. **Validity windows.** No key carries `notBefore`/`notAfter`, so there is no
    notion of two keys being simultaneously valid during a handover. Without
    overlapping windows, rotation is a hard cutover with an outage in the middle.
 
-3. **Revocation.** There is no revocation record and no place to put one. A
-   revocation list is only meaningful if it is itself signed and monotonic;
-   otherwise removing an entry is as easy as adding one.
+3. **Revocation.** Implemented as a signed state transition. The active key can
+   be revoked, which makes the registry fail closed until a replacement is
+   rotated in.
 
-4. **Verification at an effective time.** `verifyCertificate(cert, anchor)` asks
-   "does this verify now". Rotation and revocation both require "did this verify
-   at time T", which means `issuedAt` has to become trusted input rather than a
-   signed-but-unused field — and `issuedAt` is chosen by the signer, so it needs
-   an external time source or a transparency log to be worth anything.
+4. **Verification at an effective time.** Signature checks establish current
+   key trust. They do not prove historical validity because the signer chooses
+   `issuedAt`. Historical decisions require an external time source or a
+   transparency log; current rotation uses a hard cutover instead.
 
-5. **Reissue / invalidation policy.** Nothing decides what happens to live
-   certificates when a key is retired: reissue under the new key, or invalidate
-   and force re-certification. Both are defensible; neither is implemented, and
-   picking one silently in code would be the wrong way to decide it.
+5. **Reissue / invalidation policy.** The approved policy is to invalidate old
+   certificates and require fresh certification after rotation or revocation.
 
-6. **Compromise recovery.** A compromised-key drill needs 1–5 first. Simulating
-   recovery without them would demonstrate a procedure the system cannot perform.
+6. **Compromise recovery.** Replacement-key recovery exists, but no independent
+   protected recovery authority or operational drill is evidenced.
 
-## Why this was not built
+## Implemented behavior
 
-The build plan's rule is explicit: do not add key rotation or revocation until
-the storage model and the tests can make the claim true end to end, and do not
-add a rotation endpoint that leaves old certificates effectively trusted forever.
-Every item above is a storage-model change, not a function. Implementing the
-surface without the model would produce exactly the artifact the rule forbids.
+`.registry-state.json` atomically stores the current key pair with a signed
+sequence anchored by the initial registry key in `.registry-key-root.pub`.
+`.registry-key{,.pub}` and `.registry-keyring.json` are non-authoritative
+compatibility mirrors; readers do not fall back to them when existing state is
+corrupt. Each signed entry binds a key id, public key, active or revoked status,
+time, reason, signer identity, and signature. Certificates name
+their signing key id. Registry reads verify the chain and only accept a
+certificate under the currently active key. Rotation retires the former key;
+revocation leaves no active key until recovery rotates in a replacement. Both
+operations make old-key certificates unmountable, and recovery requires fresh
+certification.
 
-## The honest claim, as it stands
+Offline verifiers can call `verifyRegistryKeyring` with a root pinned outside the
+registry and an optional expected head. A pinned root authenticates the history,
+but detecting restoration of an older valid history also requires the verifier
+to retain the latest expected head outside registry-controlled storage. The
+registry does not claim rollback protection when that external state is absent.
 
-Bridgesmith verifies certificates against a single registry-owned trust anchor
-and fails closed without one. It does **not** support key rotation, revocation,
-effective-time verification, or recovery from a compromised key. A compromised
-`.registry-key` today means every certificate that key signed must be treated as
-untrusted, and the only remedy is to re-certify every connector under a new key.
+The signed `changedAt` and certificate `issuedAt` values are signer-controlled.
+They do not prove that a certificate was valid at a historical instant. Trusted
+effective-time and transparency-log verification remain unsupported, as does a
+protected recovery authority independent of the current signing key.
 
-## What would have to land first
+## Concurrency and crash recovery
 
-A signed keyring artifact (`keys.json`: key id, public key, `notBefore`,
-`notAfter`, `revokedAt`, revocation reason), itself anchored — most likely by
-requiring each entry to be signed by its predecessor so the chain is verifiable
-from a single root. Certificates would name the `keyId` that signed them (they
-carry the public key today, but verification is anchored to one file rather than
-resolved through a keyring). `verifyCertificate` would take an effective time and
-resolve the key through the ring. Only then do rotation, revocation and a
-compromise drill have something true to assert.
+Initialization, certificate issuance, rotation and revocation share one directory
+lock. This prevents two initializers from replacing each other's trust root and
+keeps freshness validation and signing on the same key generation. Contention
+fails with `EEXIST`; callers must retry only after the other writer finishes.
+Readers still use the atomic state snapshot without taking the mutation lock.
+
+A hard process kill may leave `.registry-keyring.lock`. Before removing it, stop
+all registry writers, confirm the prior process is gone, and verify the saved
+root, state and expected head. Removing an active writer's lock can break the
+serialization guarantee. The local process tests do not establish power-loss
+durability or an automatic recovery policy.
+
+## Remaining limits
+
+The current implementation does not provide trusted historical-time decisions,
+automatic out-of-band head persistence, a separate recovery authority, or a
+compromise-recovery drill. Operators must retain a pinned root and current head
+outside the registry for rollback detection.
 
 Prior art worth reading before building it: **TUF** for the role/threshold and
 key-rotation model, and **Sigstore/Rekor** for why an append-only transparency
 log is what makes "valid at time T" mean something when the signer picks the
 timestamp.
+
+The exported key initializer also takes the lifecycle lock. Payload signing uses
+that initializer, so a direct caller cannot create a second key pair during first
+initialization. Lifecycle writers use a private lock-assuming helper to avoid
+nested acquisition. A competing call refuses with EEXIST and may retry later.

@@ -16,8 +16,8 @@ data it cannot certify.
 pnpm install --frozen-lockfile && pnpm build && pnpm typecheck && pnpm test
 ```
 
-Expected: TypeScript compiles with no errors and **157/157 vitest tests pass**
-across 14 files (`pipeline`, `localstore`, `selfheal`, `certificate`, `dotnet`,
+Expected: TypeScript compiles with no errors and **164/164 vitest tests pass**
+across 15 files (`pipeline`, `localstore`, `selfheal`, `certificate`, `dotnet`,
 `provenance`, `workflow`, `workflow-state`, `semantic`, `infer`, `compat`,
 `bundle`, `permissions`, `observe`). CI runs this: `.github/workflows/ci.yml`.
 
@@ -25,11 +25,9 @@ across 14 files (`pipeline`, `localstore`, `selfheal`, `certificate`, `dotnet`,
 `pnpm typecheck` covers `src`, `test` and `scripts` via `tsconfig.test.json`, so
 a type-broken test cannot sit green behind a passing build.
 
-Known environment note: on pnpm 12, `pnpm install --frozen-lockfile` exits
-non-zero with `ERR_PNPM_IGNORED_BUILDS: esbuild`, despite the
-`onlyBuiltDependencies` allowlist in `pnpm-workspace.yaml`. Dependencies still
-install; build, typecheck and test are the real gates, which is why CI runs
-`pnpm install || true`.
+Package setup permits only esbuild's build script through `allowBuilds` in
+`pnpm-workspace.yaml`. CI requires `pnpm install --frozen-lockfile` to succeed
+before build, typecheck and tests.
 
 Mutation harness (the tests that prove the tests):
 
@@ -123,11 +121,13 @@ pnpm demo   # scripts/demo.sh — forges Chess.com + Devpost, serves REST, iMess
   (`src/certify/replay.ts`), never against a live third party. See
   `scripts/write-workflow-proof.ts` for a fully certified write workflow that
   touches nothing real.
-- **Key lifecycle: not implemented.** One signing key, no rotation, no
-  revocation, no effective-time verification, no compromise recovery. A
-  compromised `.registry-key` invalidates every certificate it signed, with no
-  partial remedy. `docs/KEY-LIFECYCLE-GAP.md` states exactly what would have to
-  exist first and why a partial implementation would be worse than none.
+- **Key lifecycle: local rotation and revocation implemented.** A signed
+  predecessor chain is rooted at `.registry-key-root.pub`; certificates from a
+  retired or revoked key no longer mount, and recovery requires fresh
+  certification. Rollback detection requires the caller to retain the expected
+  keyring head outside the registry. Trusted historical-time verification,
+  independent recovery authority, and an operational compromise drill remain
+  unsupported. See `docs/KEY-LIFECYCLE-GAP.md`.
 - **Sandboxing is capability mediation at egress, not code confinement.** The
   trusted runtime executes no generated code. Optional generated .NET clients
   run in the caller's process and can only reach the guarded facade; a WASI-style

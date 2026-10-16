@@ -1,0 +1,32 @@
+{
+  "app": "devpost",
+  "specHash": "7ea53a0a2b0d7042eaa3aabf7fbb9f5d258126d66e4c2656731c4f32cd1feea7",
+  "startedAt": "2026-09-13T21:43:56.791Z",
+  "finishedAt": "2026-09-13T21:43:56.838Z",
+  "checks": [
+    {
+      "op": "get_api_hackathons",
+      "check": "holdout-replay",
+      "pass": true,
+      "detail": "4 holdout samples validated"
+    },
+    {
+      "op": "get_api_hackathons",
+      "check": "mutation",
+      "pass": true,
+      "detail": "40/40 mutants caught"
+    }
+  ],
+  "mutation": {
+    "generated": 40,
+    "caught": 40,
+    "missed": 0,
+    "missedKinds": []
+  },
+  "certifiedOps": [
+    "get_api_hackathons"
+  ],
+  "refusedOps": [],
+  "uncoveredOps": [],
+  "verdict": "certified"
+}

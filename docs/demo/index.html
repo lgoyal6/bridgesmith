@@ -1,0 +1,82 @@
+<!--
+  Bridgesmith's saved connector artifact explorer.
+  app.js checks the bundled source files against evidence.json.
+  The page reads evidence only; it does not forge or serve a connector.
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Inspect the evidence behind one saved Bridgesmith connector certificate.">
+    <title>Bridgesmith | Connector evidence</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="https://github.com/lgoyal6/bridgesmith" aria-label="Bridgesmith source repository">
+        <span class="brand-mark">B</span><span>BRIDGESMITH</span>
+      </a>
+      <span class="status-tag"><span class="dot"></span> SAVED EVIDENCE</span>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p class="eyebrow">CONNECTOR TRUST, MADE INSPECTABLE</p>
+        <h1>Prove a connector before you trust it.</h1>
+        <p class="intro">This explorer reads one committed Devpost connector artifact. Check what passed, inspect the operation it exposes, and see which trust questions remain open.</p>
+        <div class="scope-note"><strong>Read-only example.</strong> No app is contacted and no connector is mounted here.</div>
+      </section>
+
+      <section class="summary-grid" aria-label="Certification result">
+        <article class="summary-card"><span class="metric" id="certified-count">-</span><span>certified operation</span></article>
+        <article class="summary-card"><span class="metric" id="holdout-count">-</span><span>held-out samples</span></article>
+        <article class="summary-card"><span class="metric" id="mutation-count">-</span><span>mutations caught</span></article>
+        <article class="summary-card"><span class="metric" id="missed-count">-</span><span>mutations missed</span></article>
+      </section>
+
+      <section class="panel artifact-panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">SAVED CONNECTOR</p><h2 id="artifact-title">Loading artifact</h2></div>
+          <span class="result-pill" id="artifact-result">CHECKING</span>
+        </div>
+        <div class="flow" aria-label="Evidence sequence">
+          <div class="flow-step"><span class="step-number">01</span><strong>Infer</strong><span>Schema derived from captured responses</span></div>
+          <div class="flow-step"><span class="step-number">02</span><strong>Replay</strong><span id="holdout-detail">Independent holdout evidence</span></div>
+          <div class="flow-step"><span class="step-number">03</span><strong>Challenge</strong><span id="mutation-detail">Corrupt responses tested against the gate</span></div>
+          <div class="flow-step"><span class="step-number">04</span><strong>Sign</strong><span id="signature-detail">Certificate records the connector result</span></div>
+        </div>
+        <div class="operation-card">
+          <div class="operation-type" id="operation-method">GET</div>
+          <div class="operation-info"><strong id="operation-id">-</strong><code id="operation-path">-</code><span id="operation-fields">-</span></div>
+          <span class="operation-badge">CERTIFIED</span>
+        </div>
+        <div class="integrity-row">
+          <div><strong>Bundle integrity</strong><span id="integrity-status">Waiting for verification</span></div>
+          <button id="verify-button" type="button">Verify saved files</button>
+        </div>
+        <div id="file-checks" class="file-checks" aria-live="polite"></div>
+      </section>
+
+      <section class="lower-grid">
+        <article class="panel">
+          <p class="eyebrow">WHAT THIS RECORD SHOWS</p>
+          <h2>Evidence for one bounded connector</h2>
+          <ul class="evidence-list" id="check-list"></ul>
+        </article>
+        <article class="panel limits-panel">
+          <p class="eyebrow">LIMITS TO KEEP IN VIEW</p>
+          <h2>A certificate is a claim you can re-check.</h2>
+          <ul class="limits-list" id="limits-list"></ul>
+        </article>
+      </section>
+
+      <footer class="footer">
+        <span>Bridgesmith · connector certification evidence</span>
+        <span id="source-commit"></span>
+        <a id="source-link" href="https://github.com/lgoyal6/bridgesmith">Open source files</a>
+      </footer>
+    </main>
+  </body>
+</html>

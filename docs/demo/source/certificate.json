@@ -1,0 +1,19 @@
+{
+  "app": "devpost",
+  "version": 1,
+  "tier": "derived-api",
+  "specHash": "7ea53a0a2b0d7042eaa3aabf7fbb9f5d258126d66e4c2656731c4f32cd1feea7",
+  "certifiedOps": [
+    "get_api_hackathons"
+  ],
+  "refusedOps": [],
+  "mutationStats": {
+    "generated": 40,
+    "caught": 40,
+    "missed": 0,
+    "missedKinds": []
+  },
+  "issuedAt": "2026-09-13T21:43:56.841Z",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEApBU0kCmg27Lv5X6KChxCV+q2XgYgH3KKtGzLxooAXtc=\n-----END PUBLIC KEY-----\n",
+  "signature": "Fwl7saC0/QByZErtQrgVOxcc53zjBAvv6ciGxymcWoxm3TkPe689mhB5HN6r6yCcc9sm3ZWpzcvBp5G7WpMbAg=="
+}

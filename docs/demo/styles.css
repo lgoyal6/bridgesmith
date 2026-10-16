@@ -1,0 +1,74 @@
+/* Bridgesmith artifact explorer styles.
+ * This file lays out the saved connector evidence and its limits.
+ * index.html owns the structure; app.js fills the artifact details.
+ */
+:root {
+  color-scheme: light;
+  --ink: #16241f;
+  --muted: #65736d;
+  --line: #dce4df;
+  --paper: #f6f8f5;
+  --white: #fff;
+  --green: #185e45;
+  --soft-green: #e7f1eb;
+  --amber: #855a16;
+  --soft-amber: #f7f0df;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); }
+a { color: var(--green); text-underline-offset: 3px; }
+.topbar { height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 max(24px, calc((100vw - 1040px) / 2)); border-bottom: 1px solid var(--line); background: var(--white); }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 12px; font-weight: 760; letter-spacing: .12em; text-decoration: none; }
+.brand-mark { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--green); color: white; font-size: 14px; letter-spacing: 0; }
+.status-tag,.operation-badge { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 10px; font-weight: 730; letter-spacing: .08em; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: #3c9c69; }
+main { width: min(100% - 40px, 1040px); margin: 0 auto; }
+.hero { max-width: 760px; padding: 64px 0 30px; }
+.eyebrow { margin: 0 0 12px; color: var(--green); font-size: 10px; font-weight: 780; letter-spacing: .14em; }
+h1 { max-width: 740px; margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: clamp(40px, 7vw, 62px); font-weight: 500; letter-spacing: -.045em; line-height: 1.03; }
+.intro { max-width: 650px; margin: 20px 0 18px; color: var(--muted); font-size: 16px; line-height: 1.65; }
+.scope-note { width: fit-content; padding: 10px 13px; border-left: 3px solid #b58a3d; background: var(--soft-amber); color: #654a1a; font-size: 12px; }
+.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 10px 0 18px; }
+.summary-card,.panel { border: 1px solid var(--line); border-radius: 12px; background: var(--white); }
+.summary-card { display: flex; flex-direction: column; gap: 5px; padding: 18px; color: var(--muted); font-size: 11px; }
+.metric { color: var(--ink); font-size: 28px; font-weight: 700; letter-spacing: -.04em; }
+.panel { padding: 24px; }
+.panel-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 25px; font-weight: 500; letter-spacing: -.025em; }
+.result-pill { padding: 7px 10px; border-radius: 999px; background: var(--soft-green); color: var(--green); font-size: 10px; font-weight: 760; letter-spacing: .08em; }
+.flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin: 28px 0 24px; }
+.flow-step { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 14px 15px 14px 0; border-top: 1px solid var(--line); }
+.flow-step:not(:last-child)::after { position: absolute; top: -4px; right: 12px; width: 7px; height: 7px; border-top: 1px solid #97a69d; border-right: 1px solid #97a69d; content: ""; transform: rotate(45deg); }
+.step-number { color: #9ba9a1; font-size: 10px; font-weight: 750; }
+.flow-step strong { font-size: 13px; }
+.flow-step span:last-child { max-width: 170px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.operation-card { display: flex; align-items: center; gap: 14px; padding: 15px; border: 1px solid var(--line); border-radius: 9px; background: #fbfcfb; }
+.operation-type { padding: 6px 8px; border-radius: 5px; background: #e8f2ec; color: var(--green); font: 750 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.operation-info { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }
+.operation-info strong { font-size: 13px; }
+code { color: #40554a; font-size: 12px; overflow-wrap: anywhere; }
+.operation-info span { color: var(--muted); font-size: 10px; }
+.operation-badge { color: var(--green); }
+.integrity-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 18px; }
+.integrity-row div { display: flex; flex-direction: column; gap: 4px; }
+.integrity-row strong { font-size: 12px; }
+.integrity-row span { color: var(--muted); font-size: 11px; }
+button { border: 0; border-radius: 7px; padding: 10px 13px; background: var(--green); color: white; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+button:hover { background: #114a35; }
+button:focus-visible,a:focus-visible { outline: 3px solid #91c9a8; outline-offset: 3px; }
+.file-checks { display: grid; gap: 6px; margin-top: 10px; }
+.file-row { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.file-row .ok { color: var(--green); font-weight: 700; }
+.file-row .bad { color: #a33e36; font-weight: 700; }
+.lower-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0 40px; }
+.lower-grid .panel { min-width: 0; }
+.lower-grid h2 { margin-bottom: 18px; }
+.evidence-list,.limits-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.evidence-list li,.limits-list li { display: flex; align-items: flex-start; gap: 9px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.check-icon { flex: 0 0 auto; color: var(--green); font-weight: 800; }
+.limit-icon { flex: 0 0 auto; color: var(--amber); font-weight: 800; }
+.footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 18px 0 28px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
+@media (max-width: 720px) { .summary-grid { grid-template-columns: repeat(2, 1fr); } .flow { grid-template-columns: repeat(2, 1fr); row-gap: 10px; } .flow-step:nth-child(2)::after { display: none; } .lower-grid { grid-template-columns: 1fr; } }
+@media (max-width: 460px) { .topbar { padding: 0 18px; } main { width: min(100% - 28px, 1040px); } .hero { padding-top: 44px; } .panel { padding: 17px; } .operation-card { align-items: flex-start; flex-wrap: wrap; } .operation-badge { margin-left: 38px; } .integrity-row { align-items: flex-start; flex-direction: column; } }

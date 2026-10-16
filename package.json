@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "proof:dotnet": "tsx scripts/dotnet-proof.ts",
-    "demo": "bash scripts/demo.sh"
+    "demo": "bash scripts/demo.sh",
+    "demo:data": "python3 scripts/export_demo_evidence.py"
   },
   "engines": {
     "node": ">=22"

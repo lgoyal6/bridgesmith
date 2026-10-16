@@ -1,0 +1,64 @@
+{
+  "sourceCommit": "400fc51e49355f084cf53013a3cc3f5d0a21ee90",
+  "sourceHashes": {
+    "spec.json": "220318fa3b90db565728c183df73b44e00dada9ca55e5bad4268d08ac23836ef",
+    "report.json": "f6b261501f3155615cbc267fd4702e3e55082ef094b89bb77259563f69d78c0f",
+    "certificate.json": "26e2fc398863ba137cb1bbd957d296946a8e02b91f04de905b6079a73f153e09"
+  },
+  "artifact": {
+    "app": "devpost",
+    "version": 1,
+    "tier": "derived-api",
+    "auth": "none",
+    "specHash": "7ea53a0a2b0d7042eaa3aabf7fbb9f5d258126d66e4c2656731c4f32cd1feea7",
+    "certificateSpecHash": "7ea53a0a2b0d7042eaa3aabf7fbb9f5d258126d66e4c2656731c4f32cd1feea7",
+    "reportSpecHash": "7ea53a0a2b0d7042eaa3aabf7fbb9f5d258126d66e4c2656731c4f32cd1feea7",
+    "issuedAt": "2026-09-13T21:43:56.841Z",
+    "operation": {
+      "id": "get_api_hackathons",
+      "method": "GET",
+      "path": "/api/hackathons",
+      "queryParams": [
+        "page"
+      ],
+      "responseFields": [
+        "hackathons",
+        "meta"
+      ]
+    },
+    "checks": [
+      {
+        "op": "get_api_hackathons",
+        "check": "holdout-replay",
+        "pass": true,
+        "detail": "4 holdout samples validated"
+      },
+      {
+        "op": "get_api_hackathons",
+        "check": "mutation",
+        "pass": true,
+        "detail": "40/40 mutants caught"
+      }
+    ],
+    "mutationStats": {
+      "generated": 40,
+      "caught": 40,
+      "missed": 0,
+      "missedKinds": []
+    },
+    "certifiedOps": [
+      "get_api_hackathons"
+    ],
+    "refusedOps": [],
+    "uncoveredOps": [],
+    "signatureAlgorithm": "Ed25519",
+    "publicKeySha256": "0d132f05abb668cbce5b8021d7fb8f4b0941b854c325967e0655ee969410c6a8",
+    "signatureBytes": 64
+  },
+  "limits": [
+    "This is a saved artifact from the public repository, not a new live run.",
+    "The page checks file hashes and compares the recorded spec hashes. It does not validate a registry trust anchor.",
+    "The public fixture has no external recovery authority or trusted historical-time proof.",
+    "Shape certification does not prove that a correctly typed value is semantically correct."
+  ]
+}

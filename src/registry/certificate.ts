@@ -280,9 +280,10 @@ export function issueCertificate(
   version: number,
   registryDir: string,
   lineage: Lineage = { predecessor: null, compat: "initial" },
+  expiresAt?: string,
 ): BirthCertificate {
   // Validation and signing must use the same key generation across processes.
-  return withKeyringLock(registryDir, () => issueCertificateLocked(spec, report, version, registryDir, lineage));
+  return withKeyringLock(registryDir, () => issueCertificateLocked(spec, report, version, registryDir, lineage, expiresAt));
 }
 
 function issueCertificateLocked(
@@ -291,6 +292,7 @@ function issueCertificateLocked(
   version: number,
   registryDir: string,
   lineage: Lineage,
+  expiresAt?: string,
 ): BirthCertificate {
   if (report.app !== spec.app) throw new Error("certification report does not match the connector app");
   const ring = ensureKeyringLocked(registryDir);
@@ -302,6 +304,13 @@ function issueCertificateLocked(
     throw new Error("certification must start after activation of the active registry key");
   }
   const { privatePem, publicPem } = ensureRegistryKeyLocked(registryDir);
+  const issuedAt = new Date().toISOString();
+  if (expiresAt !== undefined) {
+    const deadline = Date.parse(expiresAt);
+    if (!Number.isFinite(deadline) || new Date(deadline).toISOString() !== expiresAt || deadline <= Date.parse(issuedAt)) {
+      throw new Error("certificate expiry must be a canonical ISO timestamp after issuance");
+    }
+  }
   const unsigned: Omit<BirthCertificate, "signature"> = {
     app: spec.app,
     version,
@@ -320,7 +329,8 @@ function issueCertificateLocked(
     permissionsHash: spec.permissions ? permissionsHashOf(spec.permissions) : null,
     captureManifestHash: manifestHash(spec.capture),
     holdoutManifestHash: manifestHash(report.holdout),
-    issuedAt: new Date().toISOString(),
+    issuedAt,
+    ...(expiresAt !== undefined ? { expiresAt } : {}),
     publicKey: publicPem,
     keyId: keyId(publicPem),
   };
@@ -349,9 +359,16 @@ function sameKey(pemA: string, pemB: string): boolean {
  * A certificate that verifies under the key it carries but not under the
  * registry's key is a forgery, not a certificate.
  */
-export function verifyCertificate(cert: BirthCertificate, trustedPublicPem: string): boolean {
+export function verifyCertificate(cert: BirthCertificate, trustedPublicPem: string, nowMs = Date.now()): boolean {
   try {
     if (typeof cert?.signature !== "string" || typeof cert.publicKey !== "string") return false;
+    // This checks local-clock expiry, not authenticity at a historical instant.
+    if (cert.expiresAt !== undefined) {
+      if (typeof cert.expiresAt !== "string") return false;
+      const deadline = Date.parse(cert.expiresAt), issued = Date.parse(cert.issuedAt);
+      if (!Number.isFinite(nowMs) || !Number.isFinite(deadline) || !Number.isFinite(issued) ||
+          new Date(deadline).toISOString() !== cert.expiresAt || deadline <= issued || nowMs < issued || nowMs >= deadline) return false;
+    }
     if (!sameKey(cert.publicKey, trustedPublicPem)) return false;
     const { signature, ...rest } = cert;
     return edVerify(

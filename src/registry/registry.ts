@@ -121,13 +121,13 @@ export class Registry {
   promote(
     spec: ConnectorSpec,
     report: CertificationReport,
-    opts: { approve?: boolean; approvedBy?: string } = {},
+    opts: { approve?: boolean; approvedBy?: string; expiresAt?: string } = {},
   ): { stored: false; diff: SpecDiff; reason: string } | { stored: true; dir: string; cert: BirthCertificate; diff: SpecDiff | null } {
     const current = this.latest(spec.app);
     const version = this.nextVersion(spec.app);
 
     if (!current) {
-      const cert = issueCertificate(spec, report, version, this.root);
+      const cert = issueCertificate(spec, report, version, this.root, undefined, opts.expiresAt);
       return { stored: true, dir: this.store(spec, report, cert), cert, diff: null };
     }
 
@@ -142,7 +142,7 @@ export class Registry {
     const cert = issueCertificate(spec, report, version, this.root, {
       predecessor: { version: current.cert.version, specHash: current.spec.specHash },
       compat: diff.overall,
-    });
+    }, opts.expiresAt);
     return { stored: true, dir: this.store(spec, report, cert), cert, diff };
   }
 

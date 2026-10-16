@@ -327,6 +327,8 @@ export interface BirthCertificate {
   /** Hash of the holdout manifest certification ran against. Distinct by construction. */
   holdoutManifestHash: string;
   issuedAt: string;
+  /** Optional signed deadline. Legacy certificates without it keep their lifetime. */
+  expiresAt?: string;
   /**
    * The version this one supersedes, or null for the first. Signed, so lineage
    * cannot be rewritten after the fact to make a breaking change look like a

@@ -1,82 +1,16 @@
-<!--
-  Bridgesmith's saved connector artifact explorer.
-  app.js checks the bundled source files against evidence.json.
-  The page reads evidence only; it does not forge or serve a connector.
--->
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Inspect the evidence behind one saved Bridgesmith connector certificate.">
-    <title>Bridgesmith | Connector evidence</title>
-    <link rel="stylesheet" href="styles.css">
-    <script src="app.js" defer></script>
-  </head>
-  <body>
-    <header class="topbar">
-      <a class="brand" href="https://github.com/lgoyal6/bridgesmith" aria-label="Bridgesmith source repository">
-        <span class="brand-mark">B</span><span>BRIDGESMITH</span>
-      </a>
-      <span class="status-tag"><span class="dot"></span> SAVED EVIDENCE</span>
-    </header>
-
-    <main>
-      <section class="hero">
-        <p class="eyebrow">CONNECTOR TRUST, MADE INSPECTABLE</p>
-        <h1>Prove a connector before you trust it.</h1>
-        <p class="intro">This explorer reads one committed Devpost connector artifact. Check what passed, inspect the operation it exposes, and see which trust questions remain open.</p>
-        <div class="scope-note"><strong>Read-only example.</strong> No app is contacted and no connector is mounted here.</div>
-      </section>
-
-      <section class="summary-grid" aria-label="Certification result">
-        <article class="summary-card"><span class="metric" id="certified-count">-</span><span>certified operation</span></article>
-        <article class="summary-card"><span class="metric" id="holdout-count">-</span><span>held-out samples</span></article>
-        <article class="summary-card"><span class="metric" id="mutation-count">-</span><span>mutations caught</span></article>
-        <article class="summary-card"><span class="metric" id="missed-count">-</span><span>mutations missed</span></article>
-      </section>
-
-      <section class="panel artifact-panel">
-        <div class="panel-heading">
-          <div><p class="eyebrow">SAVED CONNECTOR</p><h2 id="artifact-title">Loading artifact</h2></div>
-          <span class="result-pill" id="artifact-result">CHECKING</span>
-        </div>
-        <div class="flow" aria-label="Evidence sequence">
-          <div class="flow-step"><span class="step-number">01</span><strong>Infer</strong><span>Schema derived from captured responses</span></div>
-          <div class="flow-step"><span class="step-number">02</span><strong>Replay</strong><span id="holdout-detail">Independent holdout evidence</span></div>
-          <div class="flow-step"><span class="step-number">03</span><strong>Challenge</strong><span id="mutation-detail">Corrupt responses tested against the gate</span></div>
-          <div class="flow-step"><span class="step-number">04</span><strong>Sign</strong><span id="signature-detail">Certificate records the connector result</span></div>
-        </div>
-        <div class="operation-card">
-          <div class="operation-type" id="operation-method">GET</div>
-          <div class="operation-info"><strong id="operation-id">-</strong><code id="operation-path">-</code><span id="operation-fields">-</span></div>
-          <span class="operation-badge">CERTIFIED</span>
-        </div>
-        <div class="integrity-row">
-          <div><strong>Bundle integrity</strong><span id="integrity-status">Waiting for verification</span></div>
-          <button id="verify-button" type="button">Verify saved files</button>
-        </div>
-        <div id="file-checks" class="file-checks" aria-live="polite"></div>
-      </section>
-
-      <section class="lower-grid">
-        <article class="panel">
-          <p class="eyebrow">WHAT THIS RECORD SHOWS</p>
-          <h2>Evidence for one bounded connector</h2>
-          <ul class="evidence-list" id="check-list"></ul>
-        </article>
-        <article class="panel limits-panel">
-          <p class="eyebrow">LIMITS TO KEEP IN VIEW</p>
-          <h2>A certificate is a claim you can re-check.</h2>
-          <ul class="limits-list" id="limits-list"></ul>
-        </article>
-      </section>
-
-      <footer class="footer">
-        <span>Bridgesmith · connector certification evidence</span>
-        <span id="source-commit"></span>
-        <a id="source-link" href="https://github.com/lgoyal6/bridgesmith">Open source files</a>
-      </footer>
-    </main>
-  </body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Certify a synthetic connector and inspect real validation and trust failures."><title>Bridgesmith | Connector lab</title><link rel="stylesheet" href="styles.css"><script src="live.js" defer></script></head>
+<body><header class="topbar"><a class="brand" href="https://github.com/lgoyal6/bridgesmith"><span class="brand-mark">B</span><span>BRIDGESMITH</span></a><span class="status-tag"><span class="dot"></span> RUNNABLE CONNECTOR LAB</span></header>
+<main><section class="hero"><p class="eyebrow">CHANGE THE INPUT. CHALLENGE THE TRUST.</p><h1>Make it pass.<br>Then try to break it.</h1><p class="intro">Build a connector for a small catalog, certify it against separate synthetic evidence, and run a read. Introduce a bad response or retire its signing key to see where the real engine refuses it.</p><div class="scope-note"><strong>Real computation, synthetic service.</strong> Each run uses Bridgesmith's certifier, signed registry and guarded adapter. The catalog runs in memory. No third-party app is contacted.</div></section>
+<section class="panel"><div class="panel-heading"><div><p class="eyebrow">01 / SET UP YOUR RUN</p><h2>A catalog you can change</h2></div><a href="saved.html">Saved Devpost evidence</a></div>
+<form id="lab-form"><div class="lab-controls">
+<label>Catalog entries <input id="count" type="number" min="1" max="12" value="6" required></label>
+<label>Catalog seed <input id="seed" type="number" min="0" max="9999" value="7" required></label>
+<label>Search titles <input id="query" type="search" maxlength="48" placeholder="Try Cedar"></label>
+<label>Response fault <select id="fault"><option value="none">Valid response</option><option value="schema">Wrong total type</option><option value="total">Total disagrees with items</option><option value="vocabulary">Unknown item status</option></select></label>
+<label>Introduce fault during <select id="faultAt"><option value="runtime">Runtime read</option><option value="holdout">Holdout certification</option></select></label>
+<label>Trust scenario <select id="trust"><option value="current">Current signing key</option><option value="tampered">Tamper with signed certificate</option><option value="wrong-root">Verify against wrong root</option><option value="retired">Retire signing key</option><option value="revoked">Revoke signing key</option><option value="recertified">Retire, then certify afresh</option><option value="expired">Evaluate at certificate expiry</option></select></label>
+</div><div class="lab-actions"><button id="run-button" type="submit">Certify and run connector</button><span>10 derive samples + 10 separate holdout samples. No schema repair.</span></div></form></section>
+<section class="panel lab-results" aria-live="polite" aria-busy="false" id="results"><div class="panel-heading"><div><p class="eyebrow">02 / FOLLOW THE GATES</p><h2 id="run-status">Ready for your first run</h2></div><span class="result-pill" id="run-badge">WAITING</span></div><ol id="timeline" class="timeline"></ol><p id="call-summary">Only a mounted connector can call the catalog. Invalid data is withheld.</p><pre id="call-output" hidden></pre><details id="proof" hidden><summary>Inspect this run's certificate and checks</summary><pre id="proof-output"></pre></details></section>
+<section class="lower-grid"><article class="panel"><p class="eyebrow">TRY A FAILURE</p><h2>Different gates, different answers.</h2><ul class="evidence-list"><li>A wrong total type fails schema validation.</li><li>A wrong item count can pass the schema and fail a declared semantic invariant.</li><li>A retired or revoked key blocks mounting before the catalog is read.</li><li>Fresh certification after retirement issues a certificate under the active key.</li></ul></article><article class="panel limits-panel"><p class="eyebrow">BOUNDARIES</p><h2>What a passing run establishes</h2><ul class="limits-list"><li>The root and keys are ephemeral for each run. This is a trust-lifecycle demonstration, not a production registry or independent authority.</li><li>Expiry uses the server clock. The expiry scenario advances its evaluation clock; trusted historical time remains open.</li><li>Only the named invariants are checked. Broader nested-list semantic mutation misses remain open.</li><li>Synthetic results do not establish real provider recovery, customer use or general connector correctness.</li></ul></article></section>
+<footer class="footer"><span>Bridgesmith · bounded connector execution</span><a href="https://github.com/lgoyal6/bridgesmith">Source and limitations</a></footer></main></body></html>

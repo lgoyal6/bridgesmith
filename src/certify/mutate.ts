@@ -14,16 +14,16 @@ export interface Mutant {
 
 export function generateMutants(schema: JsonSchema, sample: unknown, cap = 40): Mutant[] {
   const out: Mutant[] = [];
-  walk(schema, sample, "", out, cap);
+  walk(schema, sample, sample, "", out, cap);
   return out.slice(0, cap);
 }
 
-function walk(schema: JsonSchema, value: unknown, path: string, out: Mutant[], cap: number): void {
+function walk(schema: JsonSchema, value: unknown, root: unknown, path: string, out: Mutant[], cap: number): void {
   if (out.length >= cap || value === null || value === undefined) return;
 
   if (schema.type === "array" || (Array.isArray(value) && schema.items)) {
     const arr = value as unknown[];
-    if (arr.length > 0 && schema.items) walk(schema.items, arr[0], `${path}/0`, out, cap);
+    if (arr.length > 0 && schema.items) walk(schema.items, arr[0], root, `${path}/0`, out, cap);
     return;
   }
 
@@ -31,8 +31,8 @@ function walk(schema: JsonSchema, value: unknown, path: string, out: Mutant[], c
     const obj = value as Record<string, unknown>;
     for (const req of schema.required ?? []) {
       if (req in obj) {
-        out.push({ kind: "drop-required", path: `${path}/${req}`, value: cloneWithout(value, path, req) });
-        out.push({ kind: "rename-required", path: `${path}/${req}`, value: cloneWithRename(value, path, req) });
+        out.push({ kind: "drop-required", path: `${path}/${escapeSegment(req)}`, value: cloneWithout(root, path, req) });
+        out.push({ kind: "rename-required", path: `${path}/${escapeSegment(req)}`, value: cloneWithRename(root, path, req) });
         if (out.length >= cap) return;
       }
     }
@@ -40,15 +40,15 @@ function walk(schema: JsonSchema, value: unknown, path: string, out: Mutant[], c
       if (!(k in obj) || out.length >= cap) continue;
       const t = primaryType(propSchema);
       if (t && t !== "null") {
-        out.push({ kind: "type-flip", path: `${path}/${k}`, value: cloneWithSet(value, `${path}/${k}`, flipValue(t)) });
+        out.push({ kind: "type-flip", path: `${path}/${escapeSegment(k)}`, value: cloneWithSet(root, `${path}/${escapeSegment(k)}`, flipValue(t)) });
         if (!allowsNull(propSchema) && obj[k] !== null) {
-          out.push({ kind: "null-inject", path: `${path}/${k}`, value: cloneWithSet(value, `${path}/${k}`, null) });
+          out.push({ kind: "null-inject", path: `${path}/${escapeSegment(k)}`, value: cloneWithSet(root, `${path}/${escapeSegment(k)}`, null) });
         }
       }
       if (propSchema.enum && typeof obj[k] === "string") {
-        out.push({ kind: "enum-violation", path: `${path}/${k}`, value: cloneWithSet(value, `${path}/${k}`, "BRIDGESMITH_MUTANT_ENUM") });
+        out.push({ kind: "enum-violation", path: `${path}/${escapeSegment(k)}`, value: cloneWithSet(root, `${path}/${escapeSegment(k)}`, "BRIDGESMITH_MUTANT_ENUM") });
       }
-      walk(propSchema, obj[k], `${path}/${k}`, out, cap);
+      walk(propSchema, obj[k], root, `${path}/${escapeSegment(k)}`, out, cap);
     }
   }
 }
@@ -96,8 +96,12 @@ function cloneWithRename(root: unknown, parentPath: string, key: string): unknow
   });
 }
 
+function escapeSegment(key: string): string {
+  return key.replaceAll("~", "~0").replaceAll("/", "~1");
+}
+
 function splitPath(path: string): string[] {
-  return path.split("/").filter(Boolean);
+  return path === "" ? [] : path.slice(1).split("/").map((key) => key.replaceAll("~1", "/").replaceAll("~0", "~"));
 }
 
 function editAt(root: unknown, segments: string[], edit: (parent: unknown, key: string) => void): unknown {

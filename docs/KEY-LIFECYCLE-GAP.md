@@ -17,15 +17,20 @@ guarantees and the limits that remain.
 | Key identity named by an artifact | replay manifests carry `keyId` and verify it (`src/replay/bundle.ts`) | present |
 | Certificate lineage | signed `predecessor` + `compat` on every certificate | present |
 | Issue time on a certificate | signed `issuedAt` | present |
+| Optional certificate expiry | signed `expiresAt`, enforced by the verifier clock | present; legacy certificates remain non-expiring |
 
 ## Original gaps and dispositions
 
 1. **A keyring.** Implemented as a predecessor-signed sequence with stable key
    identities and status metadata.
 
-2. **Validity windows.** No key carries `notBefore`/`notAfter`, so there is no
-   notion of two keys being simultaneously valid during a handover. Without
-   overlapping windows, rotation is a hard cutover with an outage in the middle.
+2. **Key validity windows.** Keys have no `notBefore`/`notAfter`; rotation is a
+   hard cutover, with no overlap period. Certificates may carry an optional signed `expiresAt` through
+   `Registry.promote(..., { expiresAt })`. No expiry is added by default, and the
+   CLI does not currently expose an expiry flag. Verifiers reject a certificate
+   at or after that deadline using their local clock. Existing certificates
+   without the field remain valid under the prior rules. A local clock does not
+   provide trusted historical time.
 
 3. **Revocation.** Implemented as a signed state transition. The active key can
    be revoked, which makes the registry fail closed until a replacement is
@@ -63,9 +68,11 @@ to retain the latest expected head outside registry-controlled storage. The
 registry does not claim rollback protection when that external state is absent.
 
 The signed `changedAt` and certificate `issuedAt` values are signer-controlled.
-They do not prove that a certificate was valid at a historical instant. Trusted
-effective-time and transparency-log verification remain unsupported, as does a
-protected recovery authority independent of the current signing key.
+They do not prove that a certificate was valid at a historical instant. Optional
+certificate expiry is checked against the verifier local clock, which can be
+wrong or manipulated. Trusted effective-time and transparency-log verification
+remain unsupported, as does a protected recovery authority independent of the
+current signing key.
 
 ## Concurrency and crash recovery
 

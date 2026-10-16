@@ -98,10 +98,11 @@ bearing rather than decorative.
 
 ## Where the chain stops
 
-- **Key lifecycle.** One key, no rotation, no revocation, no effective-time
-  verification. See `docs/KEY-LIFECYCLE-GAP.md` for exactly what would have to
-  exist first. A compromised `.registry-key` today invalidates everything it
-  signed, with no partial remedy.
+- **Key lifecycle.** Rotation and revocation use a signed local keyring, and an
+  optional signed certificate expiry is checked against the verifier local clock.
+  Legacy certificates remain non-expiring. Historical trust, rollback protection
+  without a retained external keyring head, and independent compromise recovery
+  remain unsupported. See `docs/KEY-LIFECYCLE-GAP.md`.
 - **General semantic correctness.** The semantic layer covers six named,
   declared invariants. A connector that declares none is certified shape-only,
   and the report says `semanticVerdict: "not-declared"` rather than anything that

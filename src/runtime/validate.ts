@@ -7,7 +7,8 @@ import { Ajv, type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
 import type { JsonSchema } from "../core/types.js";
 
-const ajv = new Ajv({ allErrors: false, strict: false, validateFormats: true });
+// The loop form keeps a missing empty-name property from becoming a falsy key.
+const ajv = new Ajv({ allErrors: false, strict: false, validateFormats: true, loopRequired: 0 });
 addFormats.default ? addFormats.default(ajv) : (addFormats as unknown as (a: Ajv) => void)(ajv);
 
 const cache = new Map<string, ValidateFunction>();

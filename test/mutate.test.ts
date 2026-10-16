@@ -50,15 +50,7 @@ describe("nested mutation targets", () => {
     const emptyFlip = mutants.find((m) => m.kind === "type-flip" && m.path === "/a~1b/");
     expect(stringFlip?.value).toEqual({ "a/b": { "~key": 424242, "": 7 } });
     expect(emptyFlip?.value).toEqual({ "a/b": { "~key": "value", "": "BRIDGESMITH_MUTANT" } });
-    for (const m of mutants) {
-      // Construction is checked separately from the validator's coverage.
-      // Its current empty-name required check admits these deletion mutants.
-      if (m.path === "/a~1b/" && ["drop-required", "rename-required"].includes(m.kind)) {
-        expect(Object.hasOwn((m.value as typeof sample)["a/b"], "")).toBe(false);
-      } else {
-        expect(validateAgainst(schema, m.value).ok).toBe(false);
-      }
-    }
+    for (const m of mutants) expect(validateAgainst(schema, m.value).ok).toBe(false);
     expect(generateMutants(schema, sample, 3)).toHaveLength(3);
   });
 });

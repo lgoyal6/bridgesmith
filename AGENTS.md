@@ -16,8 +16,8 @@ data it cannot certify.
 pnpm install --frozen-lockfile && pnpm build && pnpm typecheck && pnpm test
 ```
 
-Expected: TypeScript compiles with no errors and **164/164 vitest tests pass**
-across 15 files (`pipeline`, `localstore`, `selfheal`, `certificate`, `dotnet`,
+Expected: TypeScript compiles with no errors and **173/173 vitest tests pass**
+across 16 files (`pipeline`, `localstore`, `selfheal`, `certificate`, `certificate-expiry`, `dotnet`,
 `provenance`, `workflow`, `workflow-state`, `semantic`, `infer`, `compat`,
 `bundle`, `permissions`, `observe`). CI runs this: `.github/workflows/ci.yml`.
 
@@ -76,6 +76,7 @@ pnpm demo   # scripts/demo.sh — forges Chess.com + Devpost, serves REST, iMess
 | Uncertified / uncovered operations are refused, never mounted | `src/certify/certify.ts` (`refusedOps`, `uncoveredOps`); surfaces expose only `cert.certifiedOps` in `src/surfaces/mcp.ts`, `src/surfaces/rest.ts` |
 | Typed .NET 8 packages expose only certified operations and bind every call to the exact app, certificate version, spec hash, and certified operation set | `src/codegen/dotnet.ts`; `test/dotnet.test.ts`; executable proof in `scripts/dotnet-proof.ts` |
 | ed25519-signed, tamper-evident birth certificates | `src/registry/certificate.ts` (`issueCertificate`, `verifyCertificate`); tamper test in `test/pipeline.test.ts` |
+| Optional signed certificate deadlines refuse verification at or after expiry using the verifier's local clock; promotion forwards the deadline and legacy certificates stay non-expiring | `src/registry/certificate.ts`, `src/registry/registry.ts`; `test/certificate-expiry.test.ts` |
 | Certificates verify against the registry's OWN key (`.registry-key.pub`), never the key the certificate carries; no anchor => nothing is served | `src/registry/certificate.ts` (`loadTrustAnchor`, `verifyCertificate(cert, trustedPublicPem)`), `src/registry/registry.ts` (`load`); `test/certificate.test.ts` V1, V3, V8, V9 |
 | A mounted `spec.json` must hash to its certificate's `specHash`, so only certified operations can be mounted | `src/spec/derive.ts` (`specHashOf`), `src/registry/registry.ts` (`load`); `test/certificate.test.ts` V5, V6, V6b |
 | An invalid latest version never shadows an older fully valid one | `src/registry/registry.ts` (`latest`); `test/certificate.test.ts` V2, V7 |

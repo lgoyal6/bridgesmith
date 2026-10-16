@@ -223,7 +223,7 @@ describe("certificate: forgery and substitution are refused", () => {
       { specHash: "0".repeat(64) },
       { certifiedOps: [...cert.certifiedOps, "smuggled"] },
       { refusedOps: [{ op: "get_api_events", reason: "tampered" }] },
-      { mutationStats: { ...cert.mutationStats, missed: 0 } },
+      { mutationStats: { ...cert.mutationStats, missed: cert.mutationStats.missed + 1 } },
       { issuedAt: "2020-01-01T00:00:00.000Z" },
     ];
     for (const t of tampers) expect(verifyCertificate({ ...cert, ...t }, trusted), JSON.stringify(t)).toBe(false);

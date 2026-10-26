@@ -1,0 +1,45 @@
+{
+  "app": "imessage",
+  "specHash": "3aa8e84e10e394c21f5e55b71495f2ee7034c4f6dfc9ec485162bf9f24f63e21",
+  "startedAt": "2026-09-13T22:49:26.837Z",
+  "finishedAt": "2026-09-13T22:49:26.852Z",
+  "checks": [
+    {
+      "op": "get_recent_messages",
+      "check": "holdout-replay",
+      "pass": true,
+      "detail": "1 holdout samples validated"
+    },
+    {
+      "op": "get_recent_messages",
+      "check": "mutation",
+      "pass": true,
+      "detail": "26/26 mutants caught"
+    },
+    {
+      "op": "get_top_contacts",
+      "check": "holdout-replay",
+      "pass": true,
+      "detail": "1 holdout samples validated"
+    },
+    {
+      "op": "get_top_contacts",
+      "check": "mutation",
+      "pass": true,
+      "detail": "12/12 mutants caught"
+    }
+  ],
+  "mutation": {
+    "generated": 38,
+    "caught": 38,
+    "missed": 0,
+    "missedKinds": []
+  },
+  "certifiedOps": [
+    "get_recent_messages",
+    "get_top_contacts"
+  ],
+  "refusedOps": [],
+  "uncoveredOps": [],
+  "verdict": "certified"
+}

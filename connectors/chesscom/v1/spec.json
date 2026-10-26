@@ -1,0 +1,124 @@
+{
+  "app": "chesscom",
+  "baseUrl": "https://api.chess.com",
+  "tier": "derived-api",
+  "auth": {
+    "kind": "none"
+  },
+  "operations": [
+    {
+      "id": "get_pub_player_player_id",
+      "method": "GET",
+      "pathTemplate": "/pub/player/{player_id}",
+      "pathParams": [
+        "player_id"
+      ],
+      "queryParams": [],
+      "responseSchema": {
+        "type": "object",
+        "properties": {
+          "avatar": {
+            "type": "string",
+            "format": "uri"
+          },
+          "player_id": {
+            "type": "integer"
+          },
+          "@id": {
+            "type": "string",
+            "format": "uri"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "name": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "enum": [
+              "GM",
+              "IM"
+            ]
+          },
+          "followers": {
+            "type": "integer"
+          },
+          "country": {
+            "type": "string",
+            "format": "uri"
+          },
+          "location": {
+            "type": "string"
+          },
+          "last_online": {
+            "type": "integer"
+          },
+          "joined": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "basic",
+              "closed",
+              "closed:abuse",
+              "premium"
+            ]
+          },
+          "is_streamer": {
+            "type": "boolean"
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "league": {
+            "type": "string"
+          },
+          "streaming_platforms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "channel_url": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              }
+            }
+          },
+          "twitch_url": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "@id",
+          "country",
+          "followers",
+          "is_streamer",
+          "joined",
+          "last_online",
+          "player_id",
+          "status",
+          "streaming_platforms",
+          "url",
+          "username",
+          "verified"
+        ]
+      },
+      "samples": 10,
+      "mutating": false
+    }
+  ],
+  "derivedAt": "2026-09-13T22:48:58.558Z",
+  "derivedFrom": "forge",
+  "specHash": "9a38a4423e39a709bd7cce048ef0c2f84dc89a9dca1c4734d0bea6396ff2980d"
+}

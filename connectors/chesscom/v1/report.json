@@ -1,0 +1,32 @@
+{
+  "app": "chesscom",
+  "specHash": "9a38a4423e39a709bd7cce048ef0c2f84dc89a9dca1c4734d0bea6396ff2980d",
+  "startedAt": "2026-09-13T22:48:58.561Z",
+  "finishedAt": "2026-09-13T22:48:58.599Z",
+  "checks": [
+    {
+      "op": "get_pub_player_player_id",
+      "check": "holdout-replay",
+      "pass": true,
+      "detail": "8 holdout samples validated (after 1 repair(s))"
+    },
+    {
+      "op": "get_pub_player_player_id",
+      "check": "mutation",
+      "pass": true,
+      "detail": "40/40 mutants caught"
+    }
+  ],
+  "mutation": {
+    "generated": 40,
+    "caught": 40,
+    "missed": 0,
+    "missedKinds": []
+  },
+  "certifiedOps": [
+    "get_pub_player_player_id"
+  ],
+  "refusedOps": [],
+  "uncoveredOps": [],
+  "verdict": "certified"
+}

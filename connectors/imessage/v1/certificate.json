@@ -1,0 +1,20 @@
+{
+  "app": "imessage",
+  "version": 1,
+  "tier": "local-store",
+  "specHash": "3aa8e84e10e394c21f5e55b71495f2ee7034c4f6dfc9ec485162bf9f24f63e21",
+  "certifiedOps": [
+    "get_recent_messages",
+    "get_top_contacts"
+  ],
+  "refusedOps": [],
+  "mutationStats": {
+    "generated": 38,
+    "caught": 38,
+    "missed": 0,
+    "missedKinds": []
+  },
+  "issuedAt": "2026-09-13T22:49:26.852Z",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEApBU0kCmg27Lv5X6KChxCV+q2XgYgH3KKtGzLxooAXtc=\n-----END PUBLIC KEY-----\n",
+  "signature": "FlC8VuJ5npjo2hS+j/GlYrW9aICmwGWlS2QRGUCBYftWq21S1jTQSrLg8Kp02r8vo328jX7DoUgGZdb0areaDA=="
+}

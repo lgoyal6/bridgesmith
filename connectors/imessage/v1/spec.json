@@ -1,0 +1,113 @@
+{
+  "app": "imessage",
+  "baseUrl": "http://imessage.local",
+  "tier": "local-store",
+  "auth": {
+    "kind": "none"
+  },
+  "operations": [
+    {
+      "id": "get_recent_messages",
+      "method": "GET",
+      "pathTemplate": "/recent_messages",
+      "pathParams": [],
+      "queryParams": [
+        {
+          "name": "limit",
+          "required": true,
+          "example": "20"
+        }
+      ],
+      "responseSchema": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "contact": {
+                  "type": "string",
+                  "enum": [
+                    "+15551000034"
+                  ]
+                },
+                "is_from_me": {
+                  "type": "integer"
+                },
+                "text": {
+                  "type": "string",
+                  "enum": [
+                    "[sample]"
+                  ]
+                },
+                "unix_seconds": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "contact",
+                "id",
+                "is_from_me",
+                "text",
+                "unix_seconds"
+              ]
+            }
+          }
+        },
+        "required": [
+          "rows"
+        ]
+      },
+      "samples": 1,
+      "mutating": false
+    },
+    {
+      "id": "get_top_contacts",
+      "method": "GET",
+      "pathTemplate": "/top_contacts",
+      "pathParams": [],
+      "queryParams": [
+        {
+          "name": "limit",
+          "required": true,
+          "example": "10"
+        }
+      ],
+      "responseSchema": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contact": {
+                  "type": "string"
+                },
+                "message_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "contact",
+                "message_count"
+              ]
+            }
+          }
+        },
+        "required": [
+          "rows"
+        ]
+      },
+      "samples": 1,
+      "mutating": false
+    }
+  ],
+  "derivedAt": "2026-09-13T22:49:26.827Z",
+  "derivedFrom": "A",
+  "specHash": "3aa8e84e10e394c21f5e55b71495f2ee7034c4f6dfc9ec485162bf9f24f63e21"
+}
